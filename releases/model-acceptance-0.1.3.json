@@ -1,0 +1,17 @@
+{
+  "version": "0.1.3",
+  "node": "v25.4.0",
+  "platform": "darwin",
+  "tools": [
+    "minder_memory_propose",
+    "read",
+    "write"
+  ],
+  "initVerified": true,
+  "verifyReadNonce": true,
+  "managedWrite": true,
+  "fileDiff": true,
+  "undoByteIdentical": true,
+  "pendingMemory": true,
+  "realModelRequests": 7
+}
