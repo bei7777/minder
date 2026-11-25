@@ -35,15 +35,15 @@ npm install --global --ignore-scripts pnpm@10.15.0
 for repo in pi-minder dsh-plugin-minder minder; do
   pnpm --dir "$repo" install --frozen-lockfile
 done
-pnpm --dir minder lab publish-local
+(cd minder && bash tests/distribution/build-candidate.sh)
 pnpm --dir pi-minder test
 pnpm --dir minder test
 pnpm --dir minder lab verify-release
 pnpm --dir minder lab test-hosts
 pnpm --dir minder lab test-kit
 node minder/tests/distribution/wsl-volumes.mjs "$work" "$windows_data"
-pnpm --dir minder lab test-upgrade releases/minder-0.1.3.tar.gz
-MINDER_LAB_DATA_PARENT="$windows_data" pnpm --dir minder lab test-upgrade releases/minder-0.1.3.tar.gz
+pnpm --dir minder lab test-upgrade .minder-dev/upgrade-base/delivery/release.json
+MINDER_LAB_DATA_PARENT="$windows_data" pnpm --dir minder lab test-upgrade .minder-dev/upgrade-base/delivery/release.json
 
 cd "$windows_data"
 node --test "$work/pi-minder/packages/core-snapshot/tests/snapshot.test.mjs" \
