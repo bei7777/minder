@@ -1,0 +1,49 @@
+name: Portable release archive
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Minder release version
+        required: true
+        default: 0.1.4
+      sha256:
+        description: SHA-256 digest of the GitHub Release asset
+        required: true
+        default: a7a66294d77ae0356e0f94d869fed1f3bece6c9b77c352b260508731ab8a5eab
+permissions:
+  contents: read
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, host: Ubuntu, shell: bash }
+          - { os: macos-latest, host: macOS, shell: bash }
+          - { os: windows-latest, host: Windows, shell: bash }
+          - { os: windows-2025, host: WSL2, shell: 'wsl-bash {0}' }
+    name: Install release on ${{ matrix.host }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        if: matrix.host != 'WSL2'
+        with:
+          node-version: 24
+      - uses: Vampire/setup-wsl@d1da7f2c0322a5ee4f24975344f67fc0f5baf364 # v7.0.0
+        if: matrix.host == 'WSL2'
+        with:
+          distribution: Debian-12
+          wsl-version: 2
+          wsl-shell-user: root
+          additional-packages: ca-certificates curl xz-utils
+      - name: Verify SHA-256, install the original lockfile and start offline
+        shell: ${{ matrix.shell }}
+        env:
+          MINDER_RELEASE_VERSION: ${{ inputs.version }}
+          MINDER_RELEASE_SHA256: ${{ inputs.sha256 }}
+          WSLENV: MINDER_RELEASE_VERSION:MINDER_RELEASE_SHA256
+        run: bash tests/distribution/portable-release.sh ${{ matrix.host }}
