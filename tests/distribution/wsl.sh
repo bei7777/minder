@@ -41,6 +41,7 @@ pnpm --dir minder test
 pnpm --dir minder lab verify-release
 pnpm --dir minder lab test-hosts
 pnpm --dir minder lab test-kit
+pnpm --dir minder lab test-upgrade releases/minder-0.1.3.tar.gz
 
 cd "$windows_data"
 node --test "$work/pi-minder/packages/core-snapshot/tests/snapshot.test.mjs" \

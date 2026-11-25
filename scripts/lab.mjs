@@ -295,13 +295,24 @@ if (command==="publish-local") {
     const cli = spec(manifest,"@minder/cli");
     let previous;
     if (command==="test-upgrade") {
-      assert.ok(args[0],"Supply a previous release.json or CLI tarball");
-      if (args[0].endsWith(".json")) {
-        const historical = json(resolve(args[0]));
+      assert.ok(args[0],"Supply a previous release.json, portable kit, or CLI tarball");
+      let baseline = resolve(args[0]);
+      if (baseline.endsWith(".tar.gz")) {
+        const extracted = makeDir(join(runDir,"baseline"));
+        await run(["tar","-xzf",baseline,"-C",extracted,"delivery/release.json","delivery/tarballs/"]);
+        baseline = join(extracted,"delivery","release.json");
+      }
+      if (baseline.endsWith(".json")) {
+        const historical = json(baseline);
+        assert.equal(inventoryDigest(historical.packages),historical.digest);
         assert.ok(historical.packages.every(p=>registryPackages.some(pattern=>p.name.startsWith(pattern.slice(0,-1)))),"Unexpected historical package");
+        for (const pkg of historical.packages) {
+          pkg.file = resolve(dirname(baseline),pkg.file);
+          assert.equal(await integrity(pkg.file),pkg.integrity,pkg.name+" historical integrity mismatch");
+        }
         await publish(historical,ctx,"baseline");
         previous = spec(historical,"@minder/cli");
-      } else previous = resolve(args[0]);
+      } else previous = baseline;
     }
     const cwd = await install([previous ?? cli],ctx);
     const main = join(cwd,"node_modules","@minder","cli","lib","bin.js");
