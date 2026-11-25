@@ -1,5 +1,7 @@
 # Minder for macOS
 
+[下载 Apple 芯片版 0.1.5](https://github.com/bei7777/minder/releases/download/desktop-v0.1.5/Minder-0.1.5-macos-arm64.dmg) · [安装与真实模型验收记录](../releases/desktop-0.1.5.md)
+
 在 Apple 芯片 Mac 上打开 DMG，将 Minder 拖进“应用程序”，然后在 Finder 中双击 Minder。应用内置 Electron、Node.js、SQLite FTS5、Pi 和三个 Minder 扩展。使用者只需在设置里选择资料目录和模型。供应商配置保存在本机，支持选择已有的 Pi 供应商 JSON，也可以连接本机 Ollama。
 
 在“设置 → 模型与目录”选择资料目录和模型，点击“保存设置”后可以直接输入任务。使用 Enter 发送，Shift + Enter 换行。再次保存同一连接会保留当前会话、输入草稿和模型验证结果。“验证模型连接”会要求模型实际读取一份临时验证文件。
