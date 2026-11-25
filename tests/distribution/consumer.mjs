@@ -36,6 +36,7 @@ const init = ()=>json("init","--root",root,"--provider","ollama","--model",model
 const digest = data=>createHash("sha256").update(data).digest("hex");
 const stateFile = join(home,"test-evidence.json");
 const fixture = join(root,"development.md");
+const createdFile = join(root,"installed-version.txt");
 const content = readFileSync(new URL("../../DEVELOPMENT.md",import.meta.url),"utf8");
 async function seed() {
   const installedModule = name => {
@@ -50,6 +51,7 @@ async function seed() {
   try {
     const tx = await snapshots.begin("Record the installed Minder package");
     await tx.write(fixture,content+"\nInstalled Minder CLI "+actualVersion+"\n");
+    await tx.write(createdFile,actualVersion+"\n");
     await tx.commit();
     const session = memory.begin("distribution-review");
     memory.propose(session,{layer:"core",key:"release.cli",source:inventory,intent:"user",text:"Minder 发行版使用 "+actualVersion+"。"});
@@ -58,9 +60,11 @@ async function seed() {
 }
 async function exercise() {
   const {transaction,session,contentHash} = read(stateFile);
-  assert.equal((await json("files",transaction)).files.length,1);
+  assert.equal((await json("files",transaction)).files.length,2);
+  assert.ok(existsSync(createdFile));
   assert.equal((await json("undo",transaction)).status,"undone");
   assert.equal(digest(readFileSync(fixture)),contentHash);
+  assert.ok(!existsSync(createdFile));
   assert.ok((await json("memory","diff",session)).length);
   assert.equal((await json("memory","commit",session)).sessionId,session);
   assert.ok((await json("memory","search","Minder")).length);

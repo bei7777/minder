@@ -316,7 +316,10 @@ if (command==="publish-local") {
     }
     const cwd = await install([previous ?? cli],ctx);
     const main = join(cwd,"node_modules","@minder","cli","lib","bin.js");
-    const sessionDir = command==="run" ? makeDir(join(lab,"user")) : runDir;
+    let sessionDir = command==="run" ? makeDir(join(lab,"user")) : runDir;
+    if (command==="test-upgrade" && process.env.MINDER_LAB_DATA_PARENT) {
+      sessionDir = mkdtempSync(join(realpathSync(process.env.MINDER_LAB_DATA_PARENT),"upgrade-"));
+    }
     const home = makeDir(join(sessionDir,"home")), data = makeDir(join(sessionDir,"documents"));
     const isolated = {...env,MINDER_HOME:home};
     if (command==="run") return run([process.execPath,main,...args],{cwd:data,env:isolated,interactive:true});
