@@ -109,11 +109,15 @@ export class TaskStore {
       const old=this.editable(id,expectedRevision), data=values({...old,...fields});
       if(data.title===old.title && data.notes===old.notes && data.nextStep===old.nextStep &&
         data.dueAt===old.dueAt && data.followUpAt===old.followUpAt) return old;
+      const card=this.db.prepare("SELECT cardRevision FROM tasks WHERE id=?").get(id)?.cardRevision;
+      const withdraw=typeof card==="string" && (card.startsWith("deadline:") && data.dueAt!==old.dueAt ||
+        card.startsWith("follow-up:") && data.followUpAt!==old.followUpAt);
       this.db.prepare(`UPDATE tasks SET title=?,notes=?,nextStep=?,dueAt=?,followUpAt=?,updatedAt=?,revision=revision+1,
         deadlineSent=CASE WHEN dueAt IS ? THEN deadlineSent ELSE 0 END,
         followUpSent=CASE WHEN followUpAt IS ? THEN followUpSent ELSE 0 END,
-        withdrawn=CASE WHEN cardRevision IS NOT NULL THEN 1 ELSE withdrawn END, cardRevision=NULL WHERE workspace=? AND id=?`)
-        .run(data.title,data.notes,data.nextStep,data.dueAt,data.followUpAt,new Date().toISOString(),data.dueAt,data.followUpAt,this.workspace,id);
+        withdrawn=MAX(withdrawn,?), cardRevision=CASE WHEN ? THEN NULL ELSE cardRevision END WHERE workspace=? AND id=?`)
+        .run(data.title,data.notes,data.nextStep,data.dueAt,data.followUpAt,new Date().toISOString(),data.dueAt,data.followUpAt,
+          Number(withdraw),Number(withdraw),this.workspace,id);
       return this.read(id);
     });
     this.flushWithdrawals();

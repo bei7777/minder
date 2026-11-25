@@ -70,8 +70,10 @@ test("免打扰时保留待派发的委托，静默时段结束后只通知一�
   try {
     const now=Date.now(), clock=ms=>new Date(ms).toISOString().slice(11,16);
     fw.configure({quietStart:clock(now-120000),quietEnd:clock(now+120000),timezone:"UTC"});
-    store.create({title:"确认会议时间",dueAt:new Date(now-1000).toISOString()});
+    const task=store.create({title:"确认会议时间",dueAt:new Date(now-1000).toISOString()});
     assert.deepEqual(store.inbox(fw),[]);assert.deepEqual(store.claimNotifications(fw),[]);
+    assert.equal(fw.list("pending").length,1);
+    store.update(task.id,{notes:"已附会议议程",followUpAt:new Date(now+86400_000).toISOString()},task.revision);
     assert.equal(fw.list("pending").length,1);
     fw.configure({quietStart:"00:00",quietEnd:"00:00"});
     assert.equal(store.inbox(fw)[0].events.length,1);assert.equal(store.claimNotifications(fw).length,1);
