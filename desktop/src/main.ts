@@ -15,7 +15,7 @@ const endpoints: Record<Method, number> = {
 
 let win: BrowserWindow | undefined;
 let backend: DesktopBackend | undefined;
-let quitting = false;
+let closing: Promise<void> | undefined;
 function currentWindow(): BrowserWindow {
   if (!win || win.isDestroyed()) throw new Error("请打开 Minder 窗口");
   return win;
@@ -104,11 +104,9 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.on("window-all-closed", () => app.quit());
   app.on("before-quit", event => {
-    if (quitting || !backend) return;
+    if (!backend) return;
     event.preventDefault();
-    const service = backend;
-    backend = undefined;
-    void service.close().finally(() => { quitting = true; app.quit(); });
+    closing ??= backend.close().finally(() => { backend = undefined; app.quit(); });
   });
   void app.whenReady().then(start).catch(() => {
     dialog.showErrorBox("Minder", "无法打开本地窗口，请检查安装包。");
