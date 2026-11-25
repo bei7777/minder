@@ -1,6 +1,7 @@
 set -euo pipefail
 
 host=${1:?Supply a host name}
+check_tasks="$PWD/tests/distribution/portable-tasks.mjs"
 archive="$PWD/releases/minder-${MINDER_RELEASE_VERSION:?Supply a release version}.tar.gz"
 if [[ "$host" = WSL2 ]]; then
   grep -Eiq 'microsoft.*WSL2' /proc/sys/kernel/osrelease
@@ -30,4 +31,5 @@ npm run verify
 npm ci --ignore-scripts --no-audit --no-fund --cache "$work/npm-cache"
 npm exec --offline --cache "$work/empty-cache" -- minder --help > "$work/help.txt"
 grep -Fq 'minder doctor' "$work/help.txt"
+node "$check_tasks" "$MINDER_RELEASE_VERSION"
 echo "Offline Minder startup passed on $host"

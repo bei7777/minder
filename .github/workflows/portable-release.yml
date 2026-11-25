@@ -5,11 +5,11 @@ on:
       version:
         description: Minder release version
         required: true
-        default: 0.1.4
+        default: 0.2.0
       sha256:
         description: SHA-256 digest of the GitHub Release asset
         required: true
-        default: a7a66294d77ae0356e0f94d869fed1f3bece6c9b77c352b260508731ab8a5eab
+        default: ecbcbe758e39a3fd558059259f8d76db5b6367c1238e0ebf7bef609214fcb75f
 permissions:
   contents: read
 jobs:
