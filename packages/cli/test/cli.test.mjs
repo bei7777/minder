@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, mkdtemp, readFile } from "node:fs/promises";
+import { copyFile, link, mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MemoryStore } from "@minder/core-memory";
@@ -42,4 +42,31 @@ test("CLI 首次配置、SDK 宿主装载、权限和记忆审阅",async()=>{
   assert.equal((await value("memory","search","中文")).length,0);
   assert.deepEqual(await value("inbox"),[]);
   assert.equal(JSON.parse(await readFile(join(state,"config.json"),"utf8")).inbox,"local");
+});
+
+test("Pi 外部服务配置保留文件引用并隔离模型可读取的资料目录",async()=>{
+  const dir=await mkdtemp(resolve(".minder-dev","providers-"));
+  const documents=join(dir,"documents"), privateDir=join(dir,"home"), file=join(dir,"providers.json");
+  await mkdir(documents);
+  const provider="local-ollama", model="qwen3:4b";
+  await writeFile(file,JSON.stringify({providers:{[provider]:{
+    baseUrl:"http://127.0.0.1:11434/v1",api:"openai-completions",apiKey:"${OLLAMA_API_KEY}",
+    models:[{id:model,name:model,compat:{supportsDeveloperRole:false}}]
+  }}}),{mode:0o600});
+  const command=(...args)=>run(process.execPath,[bin,...args],{env:{...process.env,MINDER_HOME:privateDir},cwd:documents});
+  const init=(configFile)=>command("init","--root",documents,"--provider-file",configFile,"--provider",provider,"--model",model,"--no-verify");
+  await init(file);
+  const configPath=join(privateDir,"config.json");
+  const config=JSON.parse(await readFile(configPath,"utf8"));
+  assert.equal(config.providerFile,file);
+  assert.deepEqual(Object.keys(config).sort(),["inbox","model","provider","providerFile","root","verified","version"]);
+  assert.equal(JSON.parse((await command("doctor","--json")).stdout).tools.length,8);
+  const visibleFile=join(documents,"providers.json");
+  await link(file,visibleFile);
+  await assert.rejects(command("doctor","--json"),/资料目录外/);
+  await unlink(visibleFile);
+  await copyFile(file,visibleFile);
+  await assert.rejects(init(visibleFile),/资料目录外/);
+  await writeFile(configPath,JSON.stringify({...config,providerFile:visibleFile}));
+  await assert.rejects(command("doctor","--json"),/资料目录外/);
 });

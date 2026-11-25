@@ -4,7 +4,7 @@
 
 ## 从便携发行包启动
 
-解压[便携发行包](releases/minder-0.1.2.tar.gz)，在包含 `INSTALL.md` 与 `package-lock.json` 的目录中运行下列命令。安装会从 npm 获取锁文件指定的第三方依赖，Minder 自身的包都随归档提供。支持范围、实测平台与待验证项目见[验收记录](ACCEPTANCE.md)。
+解压[便携发行包](releases/minder-0.1.3.tar.gz)，在包含 `INSTALL.md` 与 `package-lock.json` 的目录中运行下列命令。安装会从 npm 获取锁文件指定的第三方依赖，Minder 自身的包都随归档提供。支持范围、实测平台与待验证项目见[验收记录](ACCEPTANCE.md)。
 
 ```sh
 npm run verify
@@ -13,6 +13,12 @@ npx --offline minder
 ```
 
 首次启动时向导会要求选择现有资料目录和模型。如果准备稍后配置模型，可以使用 `init --root <现有目录> --provider ollama --model <模型名> --no-verify`，随后进入终端工作台。配置好服务后，运行 `npx --offline minder verify` 验证一次真实的工具调用。
+
+已有 Pi 格式的供应商配置文件时，可直接使用其中的供应商和模型标识。凭据文件应位于允许助手处理的资料目录之外。Minder 在自己的配置里保存该文件的路径。
+
+```sh
+npx --offline minder init --root "/资料目录" --provider-file "/私有目录/providers.json" --provider PROVIDER_ID --model MODEL_ID
+```
 
 ## 从本地仓库运行
 

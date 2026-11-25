@@ -1,6 +1,6 @@
 {
   "name": "@minder/cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A personal agent with recoverable file operations, editable memory and a quiet local inbox",
   "license": "MIT",
   "type": "module",

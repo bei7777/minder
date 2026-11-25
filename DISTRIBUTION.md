@@ -5,6 +5,7 @@
 | 命令 | 实际执行的检查 |
 | --- | --- |
 | `pnpm lab publish-local` | 构建核心、适配器及发行版。使用 pnpm 打包，检查归档中的 JS、许可证和 DSH 补丁，再通过本机 Verdaccio 发布。每个包按 SHA-512 验证。 |
+| `pnpm lab publish-local --reuse <上次完整发布清单> @minder/cli` | 只构建升级版本的 CLI。从历史清单取出另外九个归档，逐一核对原始 SHA-512，再发布完整组合。 |
 | `pnpm lab publish-local @minder/core-snapshot pi-minder-snapshot dsh-plugin-minder-snapshot` | 仅归档指定包，用于单独研究 snapshot 的发包流程。运行整体验收前须恢复完整清单。 |
 | `pnpm lab test-install` | 在干净目录通过 npm 安装 CLI，调用 npm 生成的启动命令，并核对 lockfile 中各个 Minder 依赖的完整性摘要。 |
 | `pnpm lab test-hosts` | 以当地注册表中安装的 Pi 扩展和真实 Pi SDK 执行宿主测试；调用 DSH 仓库的 `test:installed` 命令使用独立宿主配置加载正式包。 |
@@ -15,6 +16,9 @@
 | `pnpm lab test-upgrade <上次发布清单的绝对路径>` | 先安装上次正式产物，生成配置、文件事务和待审记忆，再升级并验证可读、可审阅和可撤销。也接受依赖已在本机注册表中的旧版 CLI 压缩包。首次发布没有升级基线。 |
 | `pnpm lab run -- --help` | 在独立安装目录执行 CLI 及传入参数。各次 run 共用 `.minder-dev/distribution/user/` 中的配置和资料，可连续执行初始化、对话和审阅。 |
 | `pnpm exec node tests/distribution/quiet-rate.mjs` | 监听实际 TypeScript 编译写入的文件，并接收一条显式要求提醒的发行公告。分别计算普通构建活动的静默率和高优公告的投递率，逐项证据保存在本地运行目录。执行期间保持同一包的其他构建暂停。 |
+| `node tests/distribution/provider.mjs [已安装的 npm 项目目录] [--memory]` | 使用指定服务验证真实模型能否读取随机文件、调用受管写入工具、产生文件差异及按字节撤销。加入 `--memory` 会检查模型提出的一条待审记忆。 |
+
+模型验收由操作者单独启动。设置 `MINDER_TEST_PROVIDER_FILE`、`MINDER_TEST_PROVIDER`、`MINDER_TEST_MODEL`，分别指向本机服务配置文件、服务标识和模型标识。配置缺失时命令返回非零。省略项目目录时，脚本使用当前发行版已通过 `pnpm lab test-kit` 验收的独立安装。运行前确认该服务可接收测试文本并可能按请求计费。脚本使用专用测试文件，检查请求体中的本机路径和认证头中的凭据是否泄漏。运行结束时清理测试资料，在 `.minder-dev/provider-check/run-*/evidence.json` 保存版本、成功调用的工具、请求次数和断言结果。
 
 包清单写入 `.minder-dev/distribution/release.json`，包含版本、SHA-512、归档绝对路径、源码提交、工作区是否有待提交更改和打包环境。每组产物拥有独立注册表存储。发布候选版本时，从干净的固定提交构建，并同时保留发布清单及其指向的压缩包，供下一次升级验收使用。私有注册表登录信息和个人测试配置留在本机。
 

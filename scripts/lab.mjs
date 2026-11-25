@@ -90,8 +90,36 @@ async function pack(names) {
     }
   }
   assert.ok(packages.length && names.every(name=>packages.some(pkg=>pkg.name===name)),"Unknown package selection");
-  const digest = createHash("sha256").update(JSON.stringify(packages.map(p=>[p.name,p.version,p.integrity]))).digest("hex");
+  const digest = inventoryDigest(packages);
   return {digest,packages,node:process.version,platform:process.platform};
+}
+
+function inventoryDigest(packages) {
+  return createHash("sha256").update(JSON.stringify(packages.map(p=>[p.name,p.version,p.integrity]))).digest("hex");
+}
+
+async function packUpdate(priorFile,names) {
+  assert.ok(priorFile && names.length,"Use --reuse <previous release.json> <changed package names>");
+  const prior = json(resolve(priorFile));
+  assert.equal(prior.packages.length,10);
+  assert.equal(inventoryDigest(prior.packages),prior.digest);
+  const current = await pack(names);
+  const changed = new Map(current.packages.map(pkg=>[pkg.name,pkg]));
+  const packages = [];
+  for (const pkg of prior.packages) {
+    const replacement = changed.get(pkg.name);
+    if (replacement) {
+      assert.notEqual(pkg.version,replacement.version,pkg.name+" needs a new version");
+      packages.push(replacement);
+      changed.delete(pkg.name);
+    } else {
+      const file = resolve(dirname(resolve(priorFile)),pkg.file);
+      assert.equal(await integrity(file),pkg.integrity,pkg.name+" historical integrity mismatch");
+      packages.push({...pkg,file});
+    }
+  }
+  assert.equal(changed.size,0,"A selected package is missing from the baseline");
+  return {...current,packages,digest:inventoryDigest(packages)};
 }
 
 async function registry(manifest,action) {
@@ -215,7 +243,7 @@ function retain(manifest) {
   console.log("Versioned release inventory:",join(directory,"release.json"));
 }
 if (command==="publish-local") {
-  const manifest = await pack(args);
+  const manifest = args[0]==="--reuse" ? await packUpdate(args[1],args.slice(2)) : await pack(args);
   await registry(manifest,ctx=>publish(manifest,ctx));
   save(manifestPath,manifest);
   retain(manifest);

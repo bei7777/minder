@@ -17,6 +17,7 @@ const help = `Minder · 个人助手
 minder                        终端工作台
 minder init                   配置模型、资料目录并验证工具调用
   --root DIR --provider ollama|deepseek --model ID [--no-verify]
+  --root DIR --provider-file FILE --provider ID --model ID [--no-verify]
 minder chat | ask TEXT        打开会话或提交一条请求
 minder files [ID] | undo ID   查看文件差异、撤销事务
 minder memory pending | search TEXT | diff SESSION | commit SESSION [KEY] | discard SESSION [KEY] | history | show ID | revert ID
@@ -107,14 +108,14 @@ async function workbench(config:Config) {
 async function main() {
   const {positionals:args,values}=parseArgs({allowPositionals:true,options:{
     help:{type:"boolean",short:"h"},json:{type:"boolean"},root:{type:"string"},model:{type:"string"},
-    provider:{type:"string"},"no-verify":{type:"boolean"},once:{type:"boolean"},feed:{type:"string",multiple:true},
+    provider:{type:"string"},"provider-file":{type:"string"},"no-verify":{type:"boolean"},once:{type:"boolean"},feed:{type:"string",multiple:true},
     "score-model":{type:"string"}
   }});
   const command=args[0];
   const tty=Boolean(process.stdin.isTTY && process.stdout.isTTY);
   if(values.help || command==="help" || (!command && !tty)) { output(help); return; }
   if(command==="init" || (!command && !await installed())) {
-    const cfg=await setup(values,tty);
+    const cfg=await setup({...values,providerFile:values["provider-file"]},tty);
     if(!values["no-verify"]) {await verify(cfg); cfg.verified=true;}
     await atomicJSON("config.json",cfg);
     output({home,...cfg});
