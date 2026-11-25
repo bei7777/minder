@@ -1,0 +1,22 @@
+{
+  "name": "@minder/cli",
+  "version": "0.1.0",
+  "description": "A personal agent with recoverable file operations, editable memory and a quiet local inbox",
+  "license": "MIT",
+  "type": "module",
+  "engines": {"node": ">=22.19.0"},
+  "bin": {"minder": "./lib/bin.js"},
+  "files": ["lib", "README.md", "LICENSE"],
+  "publishConfig": {"access": "public"},
+  "scripts": {"build": "tsc -p tsconfig.json", "test": "node --test test/*.test.mjs"},
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.6.0",
+    "@inquirer/prompts": "7.10.1",
+    "@minder/core-firewall": "0.1.0",
+    "@minder/core-memory": "0.1.0",
+    "@minder/core-snapshot": "0.1.0",
+    "pi-minder-firewall": "0.1.0",
+    "pi-minder-memory": "0.1.0",
+    "pi-minder-snapshot": "0.1.0"
+  }
+}
