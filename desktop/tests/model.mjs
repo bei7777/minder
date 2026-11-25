@@ -41,63 +41,68 @@ async function run() {
     app = await electron.launch({executablePath,args:["--user-data-dir="+profile],env,cwd:root,timeout:60_000});
     const page = await app.firstWindow();
     await page.waitForFunction(()=>!!window.minder);
+    page.setDefaultTimeout(90_000);
+    const click=name=>page.getByRole("button",{name,exact:true}).click();
+    const prompt=page.getByRole("textbox",{name:"任务"});
+    const saved=async()=>{
+      await click("保存设置");
+      await prompt.waitFor();
+      assert.ok(await prompt.evaluate(element=>document.activeElement===element));
+    };
     const status = await page.evaluate(()=>window.minder.status());
     assert.ok(status.configured && status.external && status.model===model);
     assert.ok(!("apiKey" in status) && !("providerFile" in status));
     stage = "模型验证";
-    assert.equal((await page.evaluate(()=>window.minder.verify())).verified,true);
+    await click("设置"); await click("验证模型连接");
+    await page.getByText("工具调用已验证",{exact:true}).waitFor();
+    await saved();
+    assert.equal((await page.evaluate(()=>window.minder.status())).verified,true);
     // 会话挑战值只在第一轮出现，第二轮必须从同一份对话上下文取回。
     stage = "第一轮模型请求";
-    const observed = await page.evaluate(async ({nonce,revised})=>{
-      const events = [];
-      const remove = window.minder.onEvent(event=>events.push(event));
-      try {
-        await window.minder.send([
-          "Use the write tool to replace sample.txt with exactly one line and a final newline.",
-          "The exact line is: "+revised,
-          "Remember the following challenge token in this conversation only: "+nonce,
-          "Do not write the token to disk. Reply with a brief confirmation after writing.",
-        ].join("\n"));
-        return {chunks:events.filter(e=>e.type==="delta" && e.text).length,
-          write:events.some(e=>e.type==="tool" && e.phase==="end" && !e.failed && e.name==="write")};
-      } finally { remove(); }
-    },{nonce,revised});
+    await page.evaluate(()=>{
+      window.modelResults={chunks:0,write:false};
+      window.minder.onEvent(event=>{
+        if(event.type==="delta" && event.text) window.modelResults.chunks++;
+        if(event.type==="tool" && event.phase==="end" && !event.failed && event.name==="write") window.modelResults.write=true;
+      });
+    });
+    await prompt.fill([
+      "Use the write tool to replace sample.txt with exactly one line and a final newline.",
+      "The exact line is: "+revised,
+      "Remember this challenge token in our conversation only: "+nonce,
+      "Do not write the token to disk. Reply with a Markdown heading '## Saved' and a brief confirmation.",
+    ].join("\n"));
+    await prompt.press("Enter");
+    await page.getByRole("button",{name:"停止生成",exact:true}).waitFor();
+    await page.getByRole("button",{name:"发送",exact:true}).waitFor();
+    await page.locator(".message.assistant .markdown-body h2").first().waitFor();
+    const observed=await page.evaluate(()=>window.modelResults);
     assert.ok(observed.chunks>0 && observed.write);
     assert.equal(await readFile(sample,"utf8"),revised+"\n");
     stage = "同一会话的第二轮请求";
-    const retained = await page.evaluate(async ()=>{
-      let response="";
-      const remove=window.minder.onEvent(event=>{if(event.type==="delta") response+=event.text;});
-      try {
-        await window.minder.send("Without using any tools, return only the challenge token I gave you in my previous message.");
-        return response;
-      } finally {remove();}
-    });
+    const followup="Without using any tools, return only the challenge token I gave you in my previous message.";
+    await prompt.fill(followup); await click("设置"); await saved();
+    assert.equal(await prompt.inputValue(),followup);
+    assert.equal(await page.locator(".message.user").count(),1);
+    await click("发送");
+    await page.getByRole("button",{name:"停止生成",exact:true}).waitFor();
+    await page.getByRole("button",{name:"发送",exact:true}).waitFor();
+    const retained = await page.locator(".message.assistant").last().innerText();
     assert.ok(retained.includes(nonce));
     stage = "文件差异和撤销";
-    const undid = await page.evaluate(async()=>{
-      const entry=(await window.minder.files()).find(item=>item.status==="committed");
-      if(!entry) throw new Error("缺少文件事务");
-      const diff=await window.minder.diff(entry.id);
-      const undo=await window.minder.undo(entry.id);
-      return {patch:diff.files[0].patch,status:undo.status};
-    });
-    assert.ok(undid.patch.includes(revised));
-    assert.equal(undid.status,"undone");
+    await click("文件记录"); await page.locator(".addition").filter({hasText:revised}).first().waitFor();
+    await click("撤销整项修改"); await page.getByRole("dialog").getByRole("button",{name:"撤销修改"}).click();
+    await page.getByText("文件修改已撤销",{exact:true}).waitFor();
     assert.equal(await readFile(sample,"utf8"),original);
     stage = "中止活动请求";
-    const aborted = await page.evaluate(async ()=>{
-      const request=window.minder.send("Write a long essay of at least 1000 words about the history of libraries.");
-      const active=await window.minder.status();
-      await window.minder.cancel();
-      await request;
-      const idle=await window.minder.status();
-      await window.minder.newChat();
-      return active.busy && !idle.busy;
-    });
-    assert.ok(aborted);
+    await click("对话"); await prompt.fill("Write a long essay of at least 1000 words about the history of libraries.");
+    await click("发送");await click("停止生成");
+    await page.getByRole("button",{name:"发送",exact:true}).waitFor();
+    assert.equal((await page.evaluate(()=>window.minder.status())).busy,false);
+    await click("新对话");await page.getByRole("heading",{name:"想在这个目录里做什么？"}).waitFor();
     const result={provider,model,platform:process.platform,verified:true,
-      streamedChunks:observed.chunks,multiTurn:true,managedWrite:true,fileDiff:true,undoByteIdentical:true,cancel:true};
+      streamedChunks:observed.chunks,multiTurn:true,managedWrite:true,fileDiff:true,undoByteIdentical:true,cancel:true,
+      saveReturnsToChat:true,composerFocused:true,preservedDraft:true,preservedVerification:true,markdown:true};
     await writeFile(join(runDir,"evidence.json"),JSON.stringify(result,null,2)+"\n",{mode:0o600});
     console.log(JSON.stringify(result));
   } finally {

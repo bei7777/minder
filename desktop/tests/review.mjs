@@ -44,7 +44,10 @@ try {
   await click("接受修改"); await page.getByText("已保存记忆修订",{exact:true}).waitFor();
   const verified=new MemoryStore(join(home,"memory"));
   try {assert.equal(verified.search("本地文件")[0]?.key,"demo.review");} finally {verified.close();}
-  await click("设置"); await click("添加来源");
+  await click("设置"); await click("内置能力");
+  for (const name of ["文件快照","白盒记忆","注意力防火墙"])
+    await page.getByRole("heading",{name,exact:true}).waitFor();
+  await click("提醒规则"); await click("添加来源");
   await page.getByLabel("事件来源").fill("dir:"+await realpath(root));
   await page.getByLabel("免打扰时提醒").check();
   await click("保存提醒规则"); await page.getByText("提醒规则已保存",{exact:true}).waitFor();

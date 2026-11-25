@@ -1,4 +1,6 @@
 import type { DesktopStatus, MemoryChange, ProviderChoice, Rules } from "./contracts.js";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 
 const api = window.minder;
 const pages = {chat:"对话",files:"文件记录",memory:"记忆审阅",inbox:"提醒",settings:"设置"};
@@ -20,15 +22,25 @@ let page:Page="chat", generation=0;
 let status:DesktopStatus, sending=false, draft="", activeTurn:Turn|undefined;
 const turns:Turn[]=[];
 let nextDetail=0;
+let noticeTimer: number | undefined;
+type SettingsTab = "connection" | "rules" | "extensions";
+let settingsTab: SettingsTab = "connection";
+let previousPage:Exclude<Page,"settings">="chat";
 function inform(message:string, failure=false) {
+  window.clearTimeout(noticeTimer);
   notice.textContent=message; notice.hidden=!message; notice.classList.toggle("error",failure);
+  if(message && !failure) noticeTimer=window.setTimeout(()=>{notice.hidden=true;},5500);
 }
 function report(err:unknown) { inform(err instanceof Error ? err.message : String(err),true); }
-function button(text:string, handler:()=>void|Promise<void>, primary=false) {
+function button(text:string, handler:()=>void|Promise<void>, primary=false, pendingText?:string) {
   const b=el("button",text,primary?"primary":""); b.type="button";
   b.addEventListener("click",async()=>{
     b.disabled=true;
-    try { await handler(); } catch(err) { report(err); } finally { b.disabled=false; }
+    if(pendingText) {b.textContent=pendingText;b.setAttribute("aria-busy","true");}
+    try { await handler(); } catch(err) { report(err); } finally {
+      b.disabled=false;
+      if(pendingText) {b.textContent=text;b.removeAttribute("aria-busy");}
+    }
   });
   return b;
 }
@@ -58,9 +70,11 @@ function refreshSidebar() {
 }
 async function navigate(target:Page) {
   const id=++generation;
+  if(page!=="settings") previousPage=page;
   page=target; ++nextDetail;
   byId("title").textContent=pages[page]; actions.replaceChildren(); view.replaceChildren();
   view.className=target==="chat"?"chat":"";
+  view.scrollTop=0;
   document.querySelectorAll<HTMLButtonElement>("[data-page]").forEach(b=>{
     if(b.dataset.page===target) b.setAttribute("aria-current","page"); else b.removeAttribute("aria-current");
   });
@@ -75,33 +89,72 @@ async function navigate(target:Page) {
   if(target==="inbox") await renderInbox(current);
   if(target==="settings") await renderSettings(current);
 }
+function markdown(text:string) {
+  const prose=el("div","","markdown-body");
+  const html=marked.parse(text,{async:false,gfm:true});
+  const content=DOMPurify.sanitize(html,{
+    ALLOWED_TAGS:["p","br","hr","strong","em","del","blockquote","ul","ol","li","pre","code",
+      "h1","h2","h3","h4","h5","h6","table","thead","tbody","tr","th","td","a"],
+    ALLOWED_ATTR:["href","start"], ALLOW_DATA_ATTR:false, ALLOW_ARIA_ATTR:false, RETURN_DOM_FRAGMENT:true,
+  });
+  for(const anchor of content.querySelectorAll("a")) {
+    const target=URL.parse(anchor.getAttribute("href") ?? "");
+    if(!target || !["https:","http:"].includes(target.protocol) || target.username || target.password) {
+      anchor.replaceWith(...anchor.childNodes);
+    } else {anchor.title=target.href;}
+  }
+  prose.append(content);
+  return prose;
+}
 function displayTurns() {
   const log=document.getElementById("chat-log");
   if(!log) return;
   const following=log.scrollHeight-log.clientHeight-log.scrollTop<72;
-  if(!turns.length) { log.replaceChildren(blank("想在这个目录里做什么？",status.root)); return; }
+  if(!turns.length) {
+    const welcome=blank("想在这个目录里做什么？",status.root);
+    welcome.classList.add("chat-welcome");
+    const mark=document.createElementNS("http://www.w3.org/2000/svg","svg");
+    mark.setAttribute("viewBox","0 0 32 32");mark.setAttribute("class","welcome-mark");mark.setAttribute("aria-hidden","true");
+    const shape=document.createElementNS(mark.namespaceURI,"use");
+    shape.setAttribute("href","#mark");mark.append(shape);welcome.prepend(mark);
+    log.replaceChildren(welcome); return;
+  }
   // 只刷新当前回答，保留前面消息的文本选择与滚动位置。
   if(!log.firstElementChild?.classList.contains("message")) log.replaceChildren();
   for(let n=Math.max(0,log.children.length-1);n<turns.length;n++) {
     const turn=turns[n]!;
     const item=el("article","","message "+turn.role);
-    item.append(el("h3",turn.role==="user"?"你":"Minder"),el("p",turn.text || (sending?"正在处理…":"")));
+    item.append(el("h3",turn.role==="user"?"你":"Minder"));
+    if(turn.role==="assistant" && turn.text) item.append(markdown(turn.text));
+    else item.append(el("p",turn.text || (sending?"正在处理…":"")));
     for(const tool of turn.tools) item.append(el("div",tool,"tool-line"));
     const existing=log.children[n];
     if(existing) existing.replaceWith(item); else log.append(item);
   }
   if(following) log.scrollTop=log.scrollHeight;
 }
+let frame=0;
+function scheduleTranscript() {
+  if(!frame && page==="chat") frame=requestAnimationFrame(()=>{frame=0;displayTurns();});
+}
 function renderChat() {
+  const previousLog=document.getElementById("chat-log");
+  const scrollOffset=previousLog && previousLog.scrollHeight-previousLog.clientHeight-previousLog.scrollTop>72
+    ? previousLog.scrollTop : undefined;
   view.replaceChildren(); actions.replaceChildren();
   const fresh=button("新对话",async()=>{
     await api.newChat(); turns.length=0; draft=""; activeTurn=undefined; await navigate("chat");
   });
   fresh.disabled=sending; actions.append(fresh);
+  view.classList.toggle("empty-chat",!turns.length);
   const log=el("div","","chat-log"); log.id="chat-log"; log.setAttribute("aria-label","对话记录");
+  log.addEventListener("click",event=>{
+    const anchor=event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
+    if(!anchor) return;
+    event.preventDefault();void api.openWebLink(anchor.href).catch(report);
+  });
   const box=el("div","","composer"), text=el("textarea");
-  text.id="prompt"; text.placeholder="输入任务…"; text.setAttribute("aria-label","任务"); text.value=draft;
-  text.addEventListener("input",()=>{draft=text.value;});
+  text.id="prompt"; text.rows=2; text.placeholder="给 Minder 发送消息…"; text.setAttribute("aria-label","任务"); text.value=draft;
   const send=async()=>{
     if(sending || !draft.trim()) return;
     const prompt=draft.trim(); draft=""; sending=true; inform("");
@@ -109,14 +162,27 @@ function renderChat() {
     const response:Turn={role:"assistant",text:"",tools:[]}; activeTurn=response; turns.push(response);
     renderChat();
     try { await api.send(prompt); }
-    catch(err) { report(err); if(!response.text) response.text="本次对话已结束。"; }
+    catch(err) { report(err); if(!response.text) response.text="这次请求未完成。"; }
     finally { sending=false; activeTurn=undefined; if(page==="chat"){ renderChat(); byId("prompt").focus(); } }
   };
-  text.onkeydown=e=>{if(!e.isComposing && (e.metaKey||e.ctrlKey)&&e.key==="Enter"){e.preventDefault();void send();}};
+  text.onkeydown=e=>{
+    if(e.key==="Enter" && !e.shiftKey && !e.altKey && !e.isComposing && e.keyCode!==229) {
+      e.preventDefault();void send();
+    }
+  };
   const row=stack("action-row");
-  row.append(el("span",status.model+" · ⌘ Return","hint"),
-    sending?button("停止生成",()=>api.cancel()):button("发送",send,true));
-  box.append(text,row); view.append(log,box); displayTurns();
+  const model=button(status.model,()=>{settingsTab="connection";return navigate("settings");});
+  model.className="composer-model";model.title="模型与目录设置";
+  const submit=sending ? button("停止生成",()=>api.cancel()) : button("发送",send,true);
+  submit.classList.add(sending?"composer-stop":"composer-submit");
+  submit.title=sending?"停止当前回答":"发送消息（Enter）";
+  const meta=stack("composer-meta");meta.append(model,el("span","Shift + Enter 换行","hint"));
+  function syncComposer() { if(!sending) submit.disabled=!text.value.trim(); }
+  text.addEventListener("input",()=>{draft=text.value;syncComposer();});
+  row.append(meta,submit);
+  box.append(text,row); view.append(log,box); syncComposer();displayTurns();
+  if(scrollOffset!==undefined) log.scrollTop=scrollOffset;
+  else if(turns.length) log.scrollTop=log.scrollHeight;
 }
 function patch(text:string) {
   const block=el("div","","patch");
@@ -191,7 +257,7 @@ async function renderInbox(current:()=>boolean) {
 }
 
 function rulesEditor(rules:Rules) {
-  const section=stack("sheet"); section.append(el("h2","提醒规则"));
+  const section=stack("sheet"); section.append(el("h2","免打扰时段"));
   const columns=stack("columns"), start=el("input"), end=el("input"), zone=el("input");
   start.type=end.type="time"; start.value=rules.quietStart; end.value=rules.quietEnd; zone.value=rules.timezone;
   columns.append(field("免打扰开始",start),field("免打扰结束",end)); section.append(columns,field("时区",zone));
@@ -212,27 +278,67 @@ function rulesEditor(rules:Rules) {
     }));
     await api.saveRules({...rules,quietStart:start.value,quietEnd:end.value,timezone:zone.value.trim(),rules:entries});
     inform("提醒规则已保存");
-  },true));
+  },true,"正在保存…"));
   section.append(el("h3","来源优先级"),list,controls); return section;
 }
-async function renderSettings(current:()=>boolean) {
-  const layout=stack("settings"), settings=stack("sheet"); layout.append(settings); view.append(layout);
-  const title=status.configured?"模型与资料目录":"连接 Minder"; settings.append(el("h2",title));
+function connectionSettings(current:()=>boolean) {
+  const settings=stack("sheet connection-panel");
+  const title=status.configured?"工作区连接":"连接 Minder"; settings.append(el("h2",title));
   let root=status.root, selection:ProviderChoice|null=null, provider=status.provider, model=status.model;
+  const rootRow=stack("preference-row"), rootLabel=stack("preference-label");
   const rootText=el("p",root || "选择允许助手读取与修改的目录。","readout");
-  settings.append(el("h3","资料目录"),rootText,button("选择目录…",async()=>{
-    const chosen=await api.chooseWorkspace(); if(chosen){root=chosen;rootText.textContent=chosen;}
-  }));
+  rootLabel.append(el("h3","资料目录"),rootText);
+  rootRow.append(rootLabel,button("选择目录…",async()=>{
+    const chosen=await api.chooseWorkspace(); if(chosen){root=chosen;rootText.textContent=chosen;sync();}
+  }));settings.append(rootRow);
   const method=el("select");
   method.add(new Option("已有供应商配置文件","external",false,status.external||!status.configured));
   method.add(new Option("本机 Ollama","ollama",false,status.configured&&!status.external));
+  method.add(new Option("DeepSeek","deepseek",false,status.configured&&!status.external&&status.provider==="deepseek"));
   const modelFields=stack("stack");
+  const controls=stack("action-row settings-actions"), state=el("span","","hint verification-status");
+  const savedStatus=status;
+  const dirty=()=>root!==savedStatus.root || provider!==savedStatus.provider || model!==savedStatus.model ||
+    (method.value==="external")!==savedStatus.external || (method.value==="external" && selection!==null);
+  let checking=false, saving=false;
+  const save=button("保存设置",async()=>{
+    if(sending) throw new Error("请等待当前任务完成后再修改连接。");
+    saving=true;sync();
+    try {
+      const result=await api.configure({root,provider,model,external:method.value==="external",
+        ...(method.value==="external" && selection?{providerSelectionId:selection.selectionId}:{})});
+      if(result.changedConnection) {turns.length=0;activeTurn=undefined;draft="";}
+      status=result;refreshSidebar();
+      if(current()) {
+        await navigate("chat");byId("prompt").focus();inform("设置已保存，可以开始对话");
+      }
+    } finally {saving=false;}
+  },true,"正在保存…");
+  const check=button("验证模型连接",async()=>{
+    checking=true;sync();
+    try {
+      status=await api.verify();
+      if(current()) {state.textContent="工具调用已验证";inform("模型已完成真实文件读取");}
+    } finally {checking=false;sync();}
+  },false,"正在验证…");
+  function sync() {
+    const ready=Boolean(root && provider && model);
+    save.disabled=!ready || checking || saving || sending;
+    check.disabled=!status.configured || dirty() || checking || saving || sending;
+    state.textContent=checking?"正在通过模型读取测试文件…":dirty()&&status.configured?"更改保存后可验证连接":
+      status.verified?"工具调用已验证":status.configured?"尚未验证工具调用":"";
+  }
+  const modelNames:Record<string,string>={ollama:status.provider==="ollama"?status.model:"",
+    deepseek:status.provider==="deepseek"?status.model:"deepseek-chat"};
   function showModelFields() {
     modelFields.replaceChildren();
-    if(method.value==="ollama") {
-      const input=el("input"); input.value=status.configured&&!status.external?status.model:""; input.placeholder="输入已安装的 Ollama 模型名";
-      model=input.value; provider="ollama"; input.oninput=()=>{model=input.value.trim();};
-      modelFields.append(field("模型名称",input)); return;
+    if(method.value!=="external") {
+      const mode=method.value, input=el("input"); input.value=modelNames[mode]??"";
+      input.placeholder=mode==="ollama"?"输入已安装的 Ollama 模型名":"输入 DeepSeek 模型名";
+      model=input.value; provider=mode; input.oninput=()=>{model=input.value.trim();modelNames[mode]=model;sync();};
+      modelFields.append(field("模型名称",input));
+      if(mode==="deepseek") modelFields.append(el("p","使用 Minder 终端版已保存的 DeepSeek 凭据或 DEEPSEEK_API_KEY。","readout"));
+      sync();return;
     }
     if(!selection && status.external) {provider=status.provider;model=status.model;}
     if(!selection && !status.external){provider="";model="";}
@@ -240,46 +346,89 @@ async function renderSettings(current:()=>boolean) {
       const chosen=await api.chooseProvider(); if(!chosen) return;
       selection=chosen; provider=chosen.providers[0]?.id??""; model=""; showModelFields();
     });
-    modelFields.append(file);
-    if(!selection) {modelFields.append(el("p",status.external?provider+" / "+model:"请选择资料目录外的 Pi 供应商配置文件。","readout"));return;}
-    modelFields.append(el("p",selection.name,"readout"));
+    const fileRow=stack("preference-row"), fileLabel=stack("preference-label");
+    const display=selection?.name ?? (status.external?provider+" / "+model:"请选择资料目录外的 Pi 供应商配置文件。");
+    fileLabel.append(el("h3","供应商配置"),el("p",display,"readout"));
+    fileRow.append(fileLabel,file);modelFields.append(fileRow);
+    if(!selection) {sync();return;}
     const providers=selection.providers;
     const providerSelect=choose("供应商",providers.map(p=>p.id),provider);
     function models() {
       provider=providerSelect.value;
       const ids=providers.find(p=>p.id===provider)?.models??[];
       const models=choose("模型",ids,ids.includes(model)?model:ids[0]??""); model=models.value;
-      models.onchange=()=>{model=models.value;}; return field("模型",models);
+      models.onchange=()=>{model=models.value;sync();}; return field("模型",models);
     }
-    const modelPicker=stack(); modelPicker.append(models()); providerSelect.onchange=()=>{modelPicker.replaceChildren(models());};
-    modelFields.append(field("供应商",providerSelect),modelPicker);
+    const modelPicker=stack(); modelPicker.append(models()); providerSelect.onchange=()=>{modelPicker.replaceChildren(models());sync();};
+    modelFields.append(field("供应商",providerSelect),modelPicker);sync();
   }
   method.onchange=showModelFields; showModelFields(); settings.append(field("连接方式",method),modelFields);
-  const controls=stack("action-row");
-  controls.append(button("保存设置",async()=>{
-    if(sending) throw new Error("请等待当前任务完成后再修改连接。");
-    if(!root || !model || !provider) throw new Error("请选择资料目录、供应商和模型。");
-    status=await api.configure({root,provider,model,external:method.value==="external"});
-    turns.length=0; draft="";refreshSidebar();inform("已保存配置");await navigate("settings");
-  },true));
-  if(status.configured) {
-    controls.append(button("验证模型连接",async()=>{status=await api.verify();inform("模型已完成真实文件读取");await navigate("settings");}));
-    controls.append(el("span",status.verified?"工具调用已验证":"尚未验证工具调用","hint"));
+  controls.append(save);if(status.configured) controls.append(check,state);
+  settings.append(controls);return settings;
+}
+function capabilities() {
+  const section=stack("sheet"); section.append(el("h2","内置 Pi 扩展"));
+  for(const [name,description,target] of [
+    ["文件快照","记录助手修改前后的文件内容。可查看差异并撤销一次任务的文件修改。","files"],
+    ["白盒记忆","审阅助手提出的长期事实和短期状态；接受后保存为本地 Markdown。","memory"],
+    ["注意力防火墙","按规则归档普通事件，重要提醒附带一份可以带回对话的行动草稿。","inbox"],
+  ] as const) {
+    const row=stack("capability-row"), label=stack("preference-label");
+    label.append(el("h3",name),el("p",description,"readout"));
+    row.append(label,button("打开"+pages[target],()=>navigate(target)));section.append(row);
   }
-  settings.append(controls);
-  if(status.configured) {
-    const rules=await api.rules(); if(current()) layout.append(rulesEditor(rules));
+  section.append(el("p","DSH 插件提供相同的三项能力，供 DeepSeek Harness 独立安装。","readout"));
+  return section;
+}
+async function renderSettings(current:()=>boolean) {
+  if(status.configured) actions.append(button("返回"+pages[previousPage],()=>navigate(previousPage)));
+  const layout=stack("settings"), tabs=el("nav","","settings-tabs"), panel=stack("settings-pane");
+  tabs.setAttribute("aria-label","设置分类");layout.append(tabs,panel);view.append(layout);
+  const connection=connectionSettings(current);
+  async function show(tab:SettingsTab) {
+    settingsTab=tab;view.scrollTop=0;panel.replaceChildren();
+    for(const item of tabs.querySelectorAll("button")) item.setAttribute("aria-pressed",String(item.dataset.tab===tab));
+    if(tab==="connection") {panel.append(connection);return;}
+    if(tab==="extensions") {panel.append(capabilities());return;}
+    if(!status.configured) {
+      panel.append(blank("先选择资料目录","保存工作区连接后，即可设置这个目录的提醒规则。"));return;
+    }
+    panel.setAttribute("aria-busy","true");
+    try {
+      const rules=await api.rules();
+      if(current() && settingsTab===tab) panel.replaceChildren(rulesEditor(rules));
+    } finally {panel.removeAttribute("aria-busy");}
   }
+  for(const [key,name] of [["connection","模型与目录"],["rules","提醒规则"],["extensions","内置能力"]] as const) {
+    const item=button(name,()=>show(key));item.dataset.tab=key;tabs.append(item);
+  }
+  await show(settingsTab);
 }
 for(const b of document.querySelectorAll<HTMLButtonElement>("[data-page]")) {
-  b.addEventListener("click",()=>{inform("");void navigate(b.dataset.page as Page).catch(report);});
+  b.addEventListener("click",()=>{if(status){inform("");void navigate(b.dataset.page as Page).catch(report);}});
 }
 window.addEventListener("keydown",e=>{
+  if(e.isComposing || !status) return;
+  if(e.key==="Escape" && page==="settings" && status.configured && !document.querySelector("dialog[open]")) {
+    e.preventDefault();void navigate(previousPage).catch(report);return;
+  }
+  if(e.metaKey && e.key===",") {e.preventDefault();void navigate("settings").catch(report);return;}
   if(!e.metaKey || e.altKey || !/^[1-5]$/.test(e.key)) return;
   e.preventDefault();void navigate((Object.keys(pages) as Page[])[Number(e.key)-1]!).catch(report);
 });
+const toggle=byId<HTMLButtonElement>("sidebar-toggle");
+function setSidebar(collapsed:boolean) {
+  document.body.classList.toggle("sidebar-collapsed",collapsed);
+  toggle.setAttribute("aria-expanded",String(!collapsed));
+  toggle.setAttribute("aria-label",collapsed?"展开侧栏":"收起侧栏");toggle.title=toggle.getAttribute("aria-label")!;
+}
+setSidebar(localStorage.getItem("minder:sidebar")==="collapsed");
+toggle.addEventListener("click",()=>{
+  const collapsed=!document.body.classList.contains("sidebar-collapsed");
+  setSidebar(collapsed);localStorage.setItem("minder:sidebar",collapsed?"collapsed":"open");
+});
 const unsubscribe=api.onEvent(event=>{
-  if(event.type==="delta" && activeTurn){activeTurn.text+=event.text;displayTurns();}
+  if(event.type==="delta" && activeTurn){activeTurn.text+=event.text;scheduleTranscript();}
   else if(event.type==="tool" && activeTurn){
     if(event.phase==="start") activeTurn.tools.push(event.name+" · 运行中");
     else {
@@ -287,11 +436,12 @@ const unsubscribe=api.onEvent(event=>{
       const n=activeTurn.tools.lastIndexOf(event.name+" · 运行中");
       if(n>=0) activeTurn.tools[n]=label; else activeTurn.tools.push(label);
     }
-    displayTurns();
+    scheduleTranscript();
   }
 });
 window.addEventListener("pagehide",unsubscribe,{once:true});
 async function start() {
   status=await api.status(); refreshSidebar(); await navigate(status.configured?"chat":"settings");
+  if(status.configurationIssue) inform(status.configurationIssue,true);
 }
 void start().catch(report);
