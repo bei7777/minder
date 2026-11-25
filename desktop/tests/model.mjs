@@ -60,10 +60,11 @@ async function run() {
     // 会话挑战值只在第一轮出现，第二轮必须从同一份对话上下文取回。
     stage = "第一轮模型请求";
     await page.evaluate(()=>{
-      window.modelResults={chunks:0,write:false};
+      window.modelResults={chunks:0,write:false,createdTasks:0};
       window.minder.onEvent(event=>{
         if(event.type==="delta" && event.text) window.modelResults.chunks++;
         if(event.type==="tool" && event.phase==="end" && !event.failed && event.name==="write") window.modelResults.write=true;
+        if(event.type==="tool" && event.phase==="end" && !event.failed && event.name==="minder_task_create") window.modelResults.createdTasks++;
       });
     });
     await prompt.fill([
@@ -99,10 +100,29 @@ async function run() {
     await click("发送");await click("停止生成");
     await page.getByRole("button",{name:"发送",exact:true}).waitFor();
     assert.equal((await page.evaluate(()=>window.minder.status())).busy,false);
-    await click("新对话");await page.getByRole("heading",{name:"想在这个目录里做什么？"}).waitFor();
+    await click("新对话");await prompt.waitFor();
+    stage="询问委托的跟进时间";
+    const title="跟进图书预约 "+randomUUID().slice(0,8);
+    async function sendTurn(text) {
+      await prompt.fill(text);
+      await click("发送");
+      await page.getByRole("button",{name:"停止生成",exact:true}).waitFor();
+      await page.getByRole("button",{name:"发送",exact:true}).waitFor();
+    }
+    await sendTurn("请帮我登记一项名为「"+title+"」的委托。请先问我希望何时跟进，等我回复具体时间后再登记。");
+    assert.match(await page.locator(".message.assistant").last().innerText(),/何时|什么时候|时间|几点|哪天/);
+    assert.deepEqual(await page.evaluate(()=>window.minder.tasks()),[]);
+    stage="根据用户补充的时间登记原委托";
+    const followUpAt=new Date(Math.floor(Date.now()/60_000)*60_000+7*86400000).toISOString();
+    await sendTurn(followUpAt);
+    const [task]=await page.evaluate(()=>window.minder.tasks());
+    assert.equal(task.title,title);
+    assert.equal(task.followUpAt,followUpAt);
+    assert.equal(await page.evaluate(()=>window.modelResults.createdTasks),1);
     const result={provider,model,platform:process.platform,verified:true,
       streamedChunks:observed.chunks,multiTurn:true,managedWrite:true,fileDiff:true,undoByteIdentical:true,cancel:true,
-      saveReturnsToChat:true,composerFocused:true,preservedDraft:true,preservedVerification:true,markdown:true};
+      saveReturnsToChat:true,composerFocused:true,preservedDraft:true,preservedVerification:true,markdown:true,
+      askedForFollowUp:true,createdAfterUserReply:true};
     await writeFile(join(runDir,"evidence.json"),JSON.stringify(result,null,2)+"\n",{mode:0o600});
     console.log(JSON.stringify(result));
   } finally {
