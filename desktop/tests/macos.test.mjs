@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createReadStream } from "node:fs";
-import { access, mkdir, mkdtemp, readFile, readdir } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, readlink } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -50,16 +50,33 @@ test("校验本地发行归档、应用签名、磁盘映像和内置 SQLite", a
   assert.deepEqual(JSON.parse(result),[receipt.electron,"function","function","function",1]);
 });
 
-test("通过 macOS 启动服务打开应用并从设置界面读取隔离状态",{timeout:60000},async()=>{
+test("通过 macOS 启动服务打开应用并从设置界面读取隔离状态",{timeout:100000},async t=>{
+  // Finder 会对文稿目录请求独立授权。应用和空白配置位于测试卷，所有数据随映像保存在项目目录中。
+  const volumeName = "Minder-Test-"+randomUUID();
+  const volume = join("/Volumes",volumeName);
+  const testDisk = join(temp,"installation.sparseimage");
+  execFileSync("/usr/bin/hdiutil",["create","-size","1200m","-type","SPARSE","-fs","APFS","-volname",volumeName,testDisk]);
+  execFileSync("/usr/bin/hdiutil",["attach",testDisk,"-nobrowse","-mountpoint",volume]);
+  t.after(()=>execFileSync("/usr/bin/hdiutil",["detach",volume]));
+  await mkdir(join(volume,"Applications"));
+  const mount = join(temp,"mounted"), installedApp = join(volume,"Applications","Minder.app");
+  await mkdir(mount);
+  execFileSync("/usr/bin/hdiutil",["attach",dmg,"-readonly","-nobrowse","-mountpoint",mount]);
+  try {
+    assert.equal(await readlink(join(mount,"Applications")),"/Applications");
+    execFileSync("/usr/bin/ditto",[join(mount,"Minder.app"),installedApp]);
+  } finally { execFileSync("/usr/bin/hdiutil",["detach",mount]); }
+  execFileSync("/usr/bin/codesign",["--verify","--deep","--strict",installedApp]);
   const probe = createServer();
   probe.listen(0,"127.0.0.1");
   await once(probe,"listening");
   const port = probe.address().port;
   await new Promise((yes,no)=>probe.close(error=>error?no(error):yes()));
-  const home = join(temp,"home"), userData = join(temp,"chromium");
-  await Promise.all([mkdir(home),mkdir(userData)]);
-  execFileSync("/usr/bin/open",["-n","--env","MINDER_HOME="+home,"--env","TMPDIR="+temp,
-    "-a",app,"--args","--user-data-dir="+userData,"--remote-debugging-address=127.0.0.1","--remote-debugging-port="+port]);
+  const home = join(volume,"home"), userData = join(volume,"chromium"), appTemp=join(volume,"temp");
+  await Promise.all([mkdir(home),mkdir(userData),mkdir(appTemp)]);
+  execFileSync("/usr/bin/open",["-n","--env","MINDER_HOME="+home,"--env","TMPDIR="+appTemp,
+    "--stdout",join(volume,"app.stdout"),"--stderr",join(volume,"app.stderr"),
+    "-a",installedApp,"--args","--user-data-dir="+userData,"--remote-debugging-address=127.0.0.1","--remote-debugging-port="+port]);
   const origin = "http://127.0.0.1:"+port;
   let ready = false;
   for (let count=0;count<200&&!ready;count++) {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { copyFile, cp, mkdir, mkdtemp, readFile, rename, symlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,7 +50,12 @@ for (const name of ["package.json","package-lock.json"]) await copyFile(join(kit
 run("npm",["ci","--omit=dev","--ignore-scripts","--no-audit","--no-fund","--prefer-offline",
   "--registry=https://registry.npmjs.org/","--cache",join(repo,".minder-dev","distribution","npm-cache")],{cwd:consumer});
 await rename(join(consumer,"node_modules"),join(stage,"node_modules"));
-for (const dir of ["lib","ui"]) await cp(join(desktop,dir),join(stage,dir),{recursive:true});
+for (const [dir,files] of Object.entries({
+  lib:["main.js","backend.js","contracts.js","preload.cjs","renderer.js"],ui:["index.html","styles.css"]
+})) {
+  await mkdir(join(stage,dir));
+  for (const file of files) await copyFile(join(desktop,dir,file),join(stage,dir,file));
+}
 await copyFile(join(repo,"LICENSE"),join(stage,"LICENSE"));
 await writeFile(join(stage,"package.json"),JSON.stringify({
   name:manifest.name,productName:"Minder",version:manifest.version,description:manifest.description,
@@ -80,7 +85,7 @@ const [packed] = await packager({
   dir:stage,out:join(work,"packed"),name:"Minder",platform:"darwin",arch:"arm64",
   electronVersion:manifest.devDependencies.electron,download:{cacheRoot:cache,checksums:await readJSON(join(electron,"checksums.json"))},
   appBundleId:"io.github.bei7777.minder",appCategoryType:"public.app-category.productivity",icon,
-  appVersion:manifest.version,tmpdir:temp,asar:false,prune:false,derefSymlinks:false,
+  appVersion:manifest.version,tmpdir:temp,asar:false,prune:false,
   ...(identity ? {osxSign:{identity,continueOnError:false}} : {})
 });
 const imageDir = join(work,"image");
