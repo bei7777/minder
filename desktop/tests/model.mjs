@@ -21,7 +21,9 @@ async function run() {
   const cli = join(contents,"Resources","app","node_modules","@minder","cli","lib","bin.js");
   await Promise.all([access(cli), access(executablePath), access(providerFile)]);
   await mkdir(parent,{recursive:true,mode:0o700});
-  const area = await mkdtemp(join(parent,"run-"));
+  const runDir = await mkdtemp(join(parent,"run-"));
+  const area = join(runDir,"data");
+  await mkdir(area,{mode:0o700});
   const root = join(area,"work"), state = join(area,"state");
   const tmp = join(area,"temp"), profile = join(area,"profile");
   await Promise.all([root,tmp,profile].map(dir=>mkdir(dir,{mode:0o700})));
@@ -94,8 +96,10 @@ async function run() {
       return active.busy && !idle.busy;
     });
     assert.ok(aborted);
-    console.log(JSON.stringify({provider,model,platform:process.platform,verified:true,
-      streamedChunks:observed.chunks,multiTurn:true,managedWrite:true,fileDiff:true,undoByteIdentical:true,cancel:true}));
+    const result={provider,model,platform:process.platform,verified:true,
+      streamedChunks:observed.chunks,multiTurn:true,managedWrite:true,fileDiff:true,undoByteIdentical:true,cancel:true};
+    await writeFile(join(runDir,"evidence.json"),JSON.stringify(result,null,2)+"\n",{mode:0o600});
+    console.log(JSON.stringify(result));
   } finally {
     try {await app?.close();} finally {await rm(area,{recursive:true,force:true});}
   }
