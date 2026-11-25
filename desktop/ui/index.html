@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Minder</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <aside>
+    <div class="drag-space"></div>
+    <div class="brand">Minder</div>
+    <nav aria-label="工作台">
+      <button data-page="chat">对话</button>
+      <button data-page="files">文件记录</button>
+      <button data-page="memory">记忆审阅</button>
+      <button data-page="inbox">提醒</button>
+    </nav>
+    <div class="sidebar-bottom">
+      <span id="workspace-name"></span>
+      <button data-page="settings">设置</button>
+    </div>
+  </aside>
+  <main>
+    <header><h1 id="title">对话</h1><div id="actions"></div></header>
+    <div id="notice" role="status" hidden></div>
+    <section id="content" aria-labelledby="title"></section>
+  </main>
+  <dialog id="confirm-dialog">
+    <form method="dialog"><h2 id="dialog-title"></h2><p id="dialog-copy"></p><div class="action-row">
+      <button value="cancel" autofocus>取消</button><button value="confirm" class="primary" id="dialog-yes">确认</button>
+    </div></form>
+  </dialog>
+  <script type="module" src="../lib/renderer.js"></script>
+</body>
+</html>
