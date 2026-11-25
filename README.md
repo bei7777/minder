@@ -4,7 +4,7 @@ Minder 使用 Pi SDK 在你选定的资料目录内工作。每次文件修改�
 
 ## 在 Mac 上使用
 
-Apple 芯片 Mac 可以使用桌面版。打开 DMG，把 Minder 拖入“应用程序”，再从 Finder 打开。在设置中选择资料目录和模型即可开始对话。应用内置 Node.js。此映像使用本机 ad-hoc 签名，尚未经过 Apple 公证，下载后首次打开可能出现 Gatekeeper 提示。[下载 macOS 安装包](https://github.com/bei7777/minder/releases/download/v0.1.4/Minder-0.1.4-macos-arm64.dmg) · [桌面版使用与构建说明](desktop/README.md)
+Apple 芯片 Mac 可以使用桌面版。打开 DMG，把 Minder 拖入“应用程序”，再从 Finder 打开。在设置中选择资料目录和模型即可开始对话。应用内置 Node.js。此映像使用本机 ad-hoc 签名，尚未经过 Apple 公证，下载后首次打开可能出现 Gatekeeper 提示。[下载 macOS 安装包](https://github.com/bei7777/minder/releases/download/desktop-v0.1.5/Minder-0.1.5-macos-arm64.dmg) · [桌面版使用与构建说明](desktop/README.md)
 
 ## 从便携发行包启动
 
