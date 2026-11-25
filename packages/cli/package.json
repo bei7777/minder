@@ -8,6 +8,7 @@
   "type": "module",
   "engines": {"node": ">=22.19.0"},
   "bin": {"minder": "./lib/bin.js"},
+  "exports": {"./desktop":{"types":"./lib/desktop.d.ts","import":"./lib/desktop.js"},"./package.json":"./package.json"},
   "files": ["lib", "README.md", "LICENSE"],
   "publishConfig": {"access": "public"},
   "scripts": {"build": "tsc -p tsconfig.json", "test": "node --test test/*.test.mjs"},

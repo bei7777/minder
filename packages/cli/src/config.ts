@@ -64,7 +64,7 @@ export async function installed(): Promise<boolean> {
   });
   return files.includes("config.json");
 }
-export async function setup(options: {root?:string; provider?:string; model?:string; providerFile?:string}, tty: boolean): Promise<Config> {
+export async function setup(options: {root?:string; provider?:string; model?:string; providerFile?:string|null}, tty: boolean): Promise<Config> {
   await mkdir(home,{mode:0o700,recursive:true});
   const chosenRoot = options.root ?? (tty ? await input({message:"允许助手访问哪个资料目录？",default:process.cwd()}) : "");
   if (!chosenRoot) throw new Error("非交互初始化需要 --root、--provider 和 --model");
@@ -72,7 +72,7 @@ export async function setup(options: {root?:string; provider?:string; model?:str
   const state = await realpath(home);
   if (!(await stat(root)).isDirectory() || inside(root,state) || inside(state,root))
     throw new Error("请选择与 Minder 数据目录分开的资料目录");
-  const providerFile=options.providerFile ?? process.env.MINDER_PROVIDER_FILE;
+  const providerFile=options.providerFile===null ? undefined : options.providerFile ?? process.env.MINDER_PROVIDER_FILE;
   if(providerFile!==undefined) {
     if (!providerFile.trim() || !options.provider?.trim() || !options.model?.trim())
       throw new Error("外部模型配置需要 --provider-file、--provider 和 --model");
