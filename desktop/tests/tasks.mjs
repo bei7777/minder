@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, realpath, symlink } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -44,7 +44,7 @@ await runCli("init","--root",work,"--provider-file",providerFile,
 
 let app, page;
 const button=name=>page.getByRole("button",{name,exact:true});
-const title="投稿材料跟进", step="核对投稿材料清单";
+const title="投稿材料跟进 "+basename(run), step="核对投稿材料清单";
 function localInput(date) {
   return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,-1);
 }
@@ -104,8 +104,12 @@ try {
     claims=count.get().n;
     assert.equal(claims,Number(supported));
     const identifier="minder-task-"+due.get().id;
-    const history=await app.evaluate(async({Notification})=>(await Notification.getHistory()).map(notice=>notice.id));
-    nativeInHistory=history.includes(identifier);
+    nativeInHistory=false;
+    for(let attempt=0;supported && attempt<12 && !nativeInHistory;attempt++) {
+      const ids=await app.evaluate(async({Notification})=>(await Notification.getHistory()).map(notice=>notice.id));
+      nativeInHistory=ids.includes(identifier);
+      if(!nativeInHistory) await delay(250);
+    }
   } finally {events.close();tasks.close();}
   await execute("/usr/bin/open",["-a",resolve(executablePath,"../../..")],{env});
   await waitFor(()=>nativeWindow.evaluate(win=>win.isVisible()),"Launch Services did not restore the resident window");

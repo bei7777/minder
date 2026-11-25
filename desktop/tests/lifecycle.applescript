@@ -12,7 +12,10 @@ on run arguments
 	end if
 	tell application "System Events"
 		tell (first application process whose unix id is targetPID)
-			set frontmost to true
+			if not frontmost then
+				set frontmost to true
+				delay 0.3
+			end if
 			if not frontmost then error "The test application is not active."
 			if operation is "close-window" then
 				click (first button of front window whose subrole is "AXCloseButton")
