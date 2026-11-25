@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { basename, join } from "node:path";
 import { readFile, realpath, stat } from "node:fs/promises";
+import { Worker } from "node:worker_threads";
 import {
   Firewall, MemoryStore, atomicJSON, configuration, home, installed, openSession,
-  openSnapshot, setup, verify as verifyProvider, watchDirectory, type Config,
+  openSnapshot, setup, verify as verifyProvider, type Config,
 } from "@minder/cli/desktop";
 import type { DesktopEvent, DesktopSettings, DesktopStatus, MinderDesktop, ProviderChoice, Rules } from "./contracts.js";
 
 export interface DesktopHost {
+  openLink(url: string): Promise<void>;
   workspace(): Promise<string | null>;
   providerFile(): Promise<string | null>;
   confirm(title:string, message:string): Promise<boolean>;
@@ -36,7 +38,8 @@ function number(value:unknown): number {
 function validateSettings(value:unknown): DesktopSettings {
   const input=object(value);
   return {root:text(input.root,"资料目录"),provider:text(input.provider,"服务名称",256),
-    model:text(input.model,"模型名称",512),external:flag(input.external)};
+    model:text(input.model,"模型名称",512),external:flag(input.external),
+    providerSelectionId:input.providerSelectionId===undefined ? undefined : text(input.providerSelectionId,"文件选择",64)};
 }
 function validateRules(value:unknown): Rules {
   const input=object(value);
@@ -57,7 +60,7 @@ type Session = Awaited<ReturnType<typeof openSession>>;
 
 export class DesktopBackend implements Omit<MinderDesktop,"onEvent"> {
   private selectedRoot?:string;
-  private selectedFile?:string;
+  private selectedFile?:{path:string; id:string};
   private session?:Session;
   private sessionKey?:string;
   private task?:Promise<void>;
@@ -82,13 +85,33 @@ export class DesktopBackend implements Omit<MinderDesktop,"onEvent"> {
     return {configured:true,root:cfg.root,provider:cfg.provider,model:cfg.model,verified:cfg.verified,
       external:!!cfg.providerFile,busy:!!this.task};
   }
+  private async saved(): Promise<{config?:Config; issue?:string}> {
+    if(!await installed()) return {};
+    try {return {config:await configuration()};}
+    catch(error) {
+      if(error instanceof SyntaxError || (error instanceof Error && "code" in error &&
+        ["ENOENT","ENOTDIR","EACCES","EPERM"].includes(String(error.code))))
+        return {issue:"无法读取已保存的配置，请重新选择资料目录和模型。"};
+      if(error instanceof Error && /^(Minder 配置无效|资料目录|模型服务|外部模型|外部配置|无法读取模型服务|模型地址|Minder 的外部凭据)/u.test(error.message))
+        return {issue:"已保存的资料目录或模型配置发生变化，请重新选择。"};
+      throw error;
+    }
+  }
   async status():Promise<DesktopStatus> {
-    if(!await installed()) return {...emptyStatus};
-    const cfg=await configuration();
+    const {config:cfg,issue}=await this.saved();
+    if(!cfg) return {...emptyStatus,configurationIssue:issue};
     if(!this.closed && this.monitor?.root!==cfg.root) {
       this.updateMonitor(cfg.root);
     }
     return this.statusFor(cfg);
+  }
+  async openWebLink(value:string) {
+    const address=text(value,"链接",8192);
+    if(!URL.canParse(address)) throw new Error("网页链接无效");
+    const target=new URL(address);
+    if(!["https:","http:"].includes(target.protocol) || !target.hostname || target.username || target.password)
+      throw new Error("仅支持公开的网页链接");
+    await this.host.openLink(target.href);
   }
   async chooseWorkspace() {
     this.demandIdle();
@@ -110,25 +133,28 @@ export class DesktopBackend implements Omit<MinderDesktop,"onEvent"> {
       return {id:text(id,"服务名称",256),models:models.map(model=>text(object(model).id,"模型名称",512))};
     }).filter(provider=>provider.models.length);
     if(!providers.length) throw new Error("配置中没有可选择的模型");
-    this.selectedFile=path;
-    return {name:basename(path),providers};
+    this.selectedFile={id:randomUUID(),path};
+    return {name:basename(path),providers,selectionId:this.selectedFile.id};
   }
   async configure(value:DesktopSettings) {
     return this.change(async()=>{
       const input=validateSettings(value);
-      let prior:Config|undefined;
-      if(await installed() && (input.root!==this.selectedRoot || (input.external && !this.selectedFile)))
-        prior=await configuration();
+      const {config:prior}=await this.saved();
       if(input.root!==this.selectedRoot && input.root!==prior?.root) throw new Error("请在系统对话框中选择资料目录");
-      const file=input.external ? this.selectedFile ?? prior?.providerFile : undefined;
+      if(input.providerSelectionId && (!input.external || input.providerSelectionId!==this.selectedFile?.id))
+        throw new Error("请重新选择模型配置文件");
+      const file=input.external ? (input.providerSelectionId ? this.selectedFile!.path : prior?.providerFile) : undefined;
       if(input.external && !file) throw new Error("请在系统对话框中选择模型配置");
       if(!input.external && input.provider!=="ollama" && input.provider!=="deepseek") throw new Error("请选择已支持的模型服务");
       const cfg=await setup({...input,providerFile:file ?? null},false);
+      const changedConnection=!prior || prior.root!==cfg.root || prior.model!==cfg.model ||
+        prior.provider!==cfg.provider || prior.providerFile!==cfg.providerFile;
+      if(!changedConnection) return {...this.statusFor(prior),changedConnection};
       await this.disposeSession();
       await atomicJSON("config.json",cfg);
-      this.selectedRoot=cfg.root;this.selectedFile=cfg.providerFile;
+      this.selectedRoot=cfg.root;
       this.updateMonitor(cfg.root);
-      return this.statusFor(cfg);
+      return {...this.statusFor(cfg),changedConnection};
     });
   }
   async verify() {
@@ -223,24 +249,25 @@ export class DesktopBackend implements Omit<MinderDesktop,"onEvent"> {
       const previous=this.monitor;
       this.monitor=undefined;
       await previous?.close();
-      const db=new Firewall(join(home,"firewall")), owner=randomUUID();
-      let stop:(()=>Promise<void>)|undefined, closing=false;
-      const tick=async()=>{
-        if(closing) return;
-        if(!db.lease(owner)) {if(stop) {await stop();stop=undefined;}return;}
-        stop??=await watchDirectory(db,root,()=>this.host.report("目录监听失败，请检查资料目录"));
-        if(db.dispatchDue().length) this.host.emit({type:"changed"});
-      };
-      let running:Promise<void>|undefined;
-      const refresh=()=>{
-        if(!running) running=tick().catch(()=>this.host.report("无法更新本机提醒")).finally(()=>{running=undefined;});
-      };
-      const timer=setInterval(refresh,15_000);timer.unref();
+      const owner=randomUUID(), stateDir=join(home,"firewall");
+      const worker=new Worker(new URL("./monitor.js",import.meta.url),{workerData:{root,owner,stateDir}});
+      const exited=new Promise<number>(resolve=>worker.once("exit",resolve));
+      worker.on("error",()=>this.host.report("目录监听工作线程已停止"));
+      worker.on("message",message=>{
+        if(message==="changed") this.host.emit({type:"changed"});
+        if(message==="error") this.host.report("目录监听失败，请检查资料目录");
+      });
       this.monitor={root,close:async()=>{
-        closing=true;clearInterval(timer);await running;
-        try{await stop?.();}finally{db.release(owner);db.close();}
+        worker.postMessage("close");
+        // 大目录首次盘点可能持续较久。SQLite 提交事件后才更新目录游标，重新启动可继续盘点。
+        const limit=setTimeout(()=>void worker.terminate(),2000);
+        try {
+          if(await exited!==0) {
+            const db=new Firewall(stateDir);
+            try {db.release(owner);} finally {db.close();}
+          }
+        } finally {clearTimeout(limit);}
       }};
-      refresh();
     }).catch(()=>this.host.report("无法启动资料目录监听"));
   }
   async close(){

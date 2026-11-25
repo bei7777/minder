@@ -7,6 +7,7 @@ const api: MinderDesktop = {
   chooseWorkspace: () => invoke("chooseWorkspace"),
   chooseProvider: () => invoke("chooseProvider"),
   configure: settings => invoke("configure",settings),
+  openWebLink: url => invoke("openWebLink",url),
   verify: () => invoke("verify"),
   send: text => invoke("send",text),
   cancel: () => invoke("cancel"),

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, session } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DesktopBackend } from "./backend.js";
 import type { MinderAPI } from "./contracts.js";
@@ -9,6 +9,7 @@ const preload = fileURLToPath(new URL("./preload.cjs", import.meta.url));
 type Method = Exclude<keyof MinderAPI, "onEvent">;
 const endpoints: Record<Method, number> = {
   status: 0, chooseWorkspace: 0, chooseProvider: 0, configure: 1, verify: 0,
+  openWebLink: 1,
   send: 1, cancel: 0, newChat: 0, files: 0, diff: 1, undo: 1, pending: 0,
   memoryDiff: 1, review: 3, inbox: 0, accept: 2, rules: 0, saveRules: 1,
 };
@@ -55,6 +56,7 @@ async function start() {
   window.once("ready-to-show", () => window.show());
   window.on("closed", () => { win = undefined; });
   const service = new DesktopBackend({
+    openLink: url => shell.openExternal(url),
     async workspace() {
       const result = await dialog.showOpenDialog(currentWindow(), {
         title: "选择 Minder 可以访问的资料目录", properties: ["openDirectory"],

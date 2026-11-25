@@ -9,10 +9,12 @@ export interface DesktopStatus {
   external: boolean;
   verified: boolean;
   busy: boolean;
+  configurationIssue?: string;
 }
 
 export interface ProviderChoice {
   name: string;
+  selectionId: string;
   providers: {id: string; models: string[]}[];
 }
 
@@ -21,6 +23,7 @@ export interface DesktopSettings {
   provider: string;
   model: string;
   external: boolean;
+  providerSelectionId?: string;
 }
 
 export type DesktopEvent =
@@ -32,7 +35,8 @@ export interface MinderDesktop {
   status(): Promise<DesktopStatus>;
   chooseWorkspace(): Promise<string | null>;
   chooseProvider(): Promise<ProviderChoice | null>;
-  configure(settings: DesktopSettings): Promise<DesktopStatus>;
+  configure(settings: DesktopSettings): Promise<DesktopStatus & {changedConnection: boolean}>;
+  openWebLink(url: string): Promise<void>;
   verify(): Promise<DesktopStatus>;
   send(text: string): Promise<void>;
   cancel(): Promise<void>;
