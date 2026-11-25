@@ -92,3 +92,13 @@ Markdown 保存长期事实、带到期时间的活动状态和每日摘要；SQ
 Pi 与 DSH 的工具事件、会话结束时机和人工确认接口由适配器处理。升级时固定新的宿主版本，重新执行真实宿主、取消、独立安装及升级测试。DSH 0.2.2-rc.5 安装时要求显式选择 profile，例如 `dsh plugin --profile web add dsh-plugin-minder-memory@0.1.2`。CLI 在 Pi SDK 会话中只装载三个受管扩展。直接将扩展装入自己的宿主时，同进程内其他插件拥有该进程的系统权限。
 
 公网上架需使用有发布权限的 npm 名称、scope 和公开 Git 仓库地址。填写真实 repository 及包子目录，发布核心、各自插件及 CLI，再分别用干净 profile 检查安装与公共目录的展示版本。DSH 社区 Plugin Hub 和宿主 Discover 的索引来源分别配置。Windows 原生、WSL Linux 文件系统和 Windows 挂载卷分别验证目录链接、文件占用、权限与重命名。CoW 的可用性取决于源和目的卷，复制后实际磁盘占用取决于文件系统。
+
+## 相关开源个人助手
+
+| 项目 | 与 Minder 设计相关的已有实践 |
+| --- | --- |
+| OpenClaw | 常驻网关、周期任务和投递结果记录。Pi 官方仓库将其列为实际集成案例。[OpenClaw 研究版本](https://github.com/openclaw/openclaw/tree/f47267698a5d9e6170f5cc6dcf47cbdbd9125793) · [Pi 官方仓库](https://github.com/earendil-works/pi) |
+| Hermes Agent | 可读的长期记忆、旧会话检索，以及与长期事实分开的可复用技能。[Hermes Agent 研究版本](https://github.com/NousResearch/hermes-agent/tree/1bddac5b8c4afbfafa835460c421a934c7973fec) |
+| Khoj | 从个人文档及网页中检索资料，保留可以追查的来源。[Khoj 研究版本](https://github.com/khoj-ai/khoj/tree/ae229ca894c0b80ad84664afcfdde523b5e87057) |
+| nanobot | 终端、网页和聊天软件共用助手，借助同一组工具执行任务。[nanobot 研究版本](https://github.com/HKUDS/nanobot/tree/4b352688369996381363af5b5094f69e17a283ca) |
+| Leon | 将用户交互、语音输入与可独立扩展的技能分开。[Leon 研究版本](https://github.com/leon-ai/leon/tree/9465e62699e57527764555ee22f2ab281a6510b6) |

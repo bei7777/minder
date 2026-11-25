@@ -4,7 +4,7 @@
 
 ## 从便携发行包启动
 
-解压发行包，在包含 `INSTALL.md` 与 `package-lock.json` 的目录中运行下列命令。安装会从 npm 获取锁文件指定的第三方依赖，Minder 自身的包都随归档提供。
+解压[便携发行包](releases/minder-0.1.2.tar.gz)，在包含 `INSTALL.md` 与 `package-lock.json` 的目录中运行下列命令。安装会从 npm 获取锁文件指定的第三方依赖，Minder 自身的包都随归档提供。支持范围、实测平台与待验证项目见[验收记录](ACCEPTANCE.md)。
 
 ```sh
 npm run verify
