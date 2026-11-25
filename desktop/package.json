@@ -1,22 +1,29 @@
 {
   "name": "minder-desktop",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "type": "module",
   "description": "Minder for macOS",
   "license": "MIT",
   "main": "lib/main.js",
   "engines": { "node": ">=24.9.0" },
+  "minderRuntime": {
+    "version": "0.1.4",
+    "archiveSha256": "a7a66294d77ae0356e0f94d869fed1f3bece6c9b77c352b260508731ab8a5eab"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "package:mac": "npm run build && node scripts/package-mac.mjs",
+    "build": "node scripts/build.mjs",
+    "package:mac": "node scripts/package-mac.mjs",
     "test:mac": "node --test tests/macos.test.mjs"
   },
   "devDependencies": {
     "@electron/packager": "20.3.0",
     "@resvg/resvg-js": "2.6.2",
     "@types/node": "24.19.2",
+    "dompurify": "3.5.0",
     "electron": "45.5.0",
+    "esbuild": "0.28.2",
+    "marked": "18.0.11",
     "playwright-core": "1.65.1",
     "typescript": "5.9.3"
   }

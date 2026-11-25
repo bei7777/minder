@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { copyFile, mkdir, mkdtemp, readFile, rename, symlink, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, mkdtemp, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +15,6 @@ const desktop = fileURLToPath(new URL("../",import.meta.url));
 const repo = resolve(desktop,"..");
 const readJSON = async path => JSON.parse(await readFile(path,"utf8"));
 const manifest = await readJSON(join(desktop,"package.json"));
-const kit = resolve(process.argv[2] ?? join(repo,".minder-dev","delivery"));
 const out = join(repo,".minder-dev","macos");
 const cache = join(repo,".minder-dev","mac-tools","electron");
 await mkdir(out,{recursive:true});
@@ -30,6 +29,17 @@ async function digest(path,algorithm) {
   return hash.digest(algorithm==="sha512" ? "base64" : "hex");
 }
 
+const runtimeVersion = manifest.minderRuntime.version;
+const archive = join(repo, "releases", `minder-${runtimeVersion}.tar.gz`);
+assert.equal(await digest(archive, "sha256"), manifest.minderRuntime.archiveSha256, "Portable release checksum mismatch");
+run("/usr/bin/tar", ["-xzf", archive, "-C", work, "delivery"]);
+const referenceKit = join(work, "delivery");
+const kit = process.argv[2] ? resolve(process.argv[2]) : referenceKit;
+if (kit !== referenceKit) {
+  for (const name of ["release.json", "package.json", "package-lock.json"]) {
+    assert.deepEqual(await readJSON(join(kit, name)), await readJSON(join(referenceKit, name)), name);
+  }
+}
 const release = await readJSON(join(kit,"release.json"));
 const lock = await readJSON(join(kit,"package-lock.json"));
 const dependencies = (await readJSON(join(kit,"package.json"))).dependencies;
@@ -38,7 +48,7 @@ assert.equal(runtime.length,7);
 assert.deepEqual(Object.keys(dependencies).sort(),runtime.map(pkg=>pkg.name).sort());
 await mkdir(join(consumer,"tarballs"));
 for (const pkg of runtime) {
-  assert.equal(pkg.version,manifest.version,pkg.name);
+  assert.equal(pkg.version,runtimeVersion,pkg.name);
   assert.match(pkg.file,/^tarballs\/[a-z0-9-]+\.tgz$/);
   const installed = lock.packages["node_modules/"+pkg.name];
   assert.equal(installed.integrity,pkg.integrity,pkg.name);
@@ -50,12 +60,16 @@ for (const name of ["package.json","package-lock.json"]) await copyFile(join(kit
 run("npm",["ci","--omit=dev","--ignore-scripts","--no-audit","--no-fund","--prefer-offline",
   "--registry=https://registry.npmjs.org/","--cache",join(repo,".minder-dev","distribution","npm-cache")],{cwd:consumer});
 await rename(join(consumer,"node_modules"),join(stage,"node_modules"));
-for (const [dir,files] of Object.entries({
-  lib:["main.js","backend.js","contracts.js","preload.cjs","renderer.js"],ui:["index.html","styles.css"]
-})) {
-  await mkdir(join(stage,dir));
-  for (const file of files) await copyFile(join(desktop,dir,file),join(stage,dir,file));
-}
+const buildConfig = join(work, "tsconfig.json");
+await writeFile(buildConfig, JSON.stringify({
+  extends: join(desktop, "tsconfig.json"),
+  compilerOptions: {
+    paths: { "@minder/cli/desktop": [join(stage, "node_modules/@minder/cli/lib/desktop.d.ts")] },
+    typeRoots: [join(desktop, "node_modules/@types")],
+  },
+}));
+run(process.execPath, [join(desktop, "scripts/build.mjs"), join(stage, "lib"), buildConfig]);
+await cp(join(desktop, "ui"), join(stage, "ui"), { recursive: true, filter: path => !basename(path).startsWith(".") });
 await copyFile(join(repo,"LICENSE"),join(stage,"LICENSE"));
 await writeFile(join(stage,"package.json"),JSON.stringify({
   name:manifest.name,productName:"Minder",version:manifest.version,description:manifest.description,
@@ -69,6 +83,9 @@ const licenses = join(stage,"third-party");
 await mkdir(licenses);
 await copyFile(join(electron,"dist","LICENSE"),join(licenses,"Electron-LICENSE.txt"));
 await copyFile(join(electron,"dist","LICENSES.chromium.html"),join(licenses,"LICENSES.chromium.html"));
+for (const name of ["marked", "dompurify"]) {
+  await copyFile(join(desktop, "node_modules", name, "LICENSE"), join(licenses, name + "-LICENSE.txt"));
+}
 const iconset = join(work,"Minder.iconset");
 await mkdir(iconset);
 const svg = await readFile(join(desktop,"assets","icon.svg"),"utf8");
@@ -99,7 +116,8 @@ const dmg = join(work,`Minder-${manifest.version}-macos-arm64.dmg`);
 run("/usr/bin/hdiutil",["create","-volname","Minder","-srcfolder",imageDir,"-format","UDZO",dmg]);
 run("/usr/bin/hdiutil",["verify",dmg]);
 await rename(app,join(work,"Minder.app"));
-const result = {version:manifest.version,arch:"arm64",electron:manifest.devDependencies.electron,
+const result = {version:manifest.version,runtimeVersion,runtimeArchiveSha256:manifest.minderRuntime.archiveSha256,
+  arch:"arm64",electron:manifest.devDependencies.electron,
   signing:identity ? "Developer ID" : "ad-hoc",app:relative(out,join(work,"Minder.app")),dmg:relative(out,dmg),
   sha256:await digest(dmg,"sha256"),packages:runtime.map(({name,version,integrity})=>({name,version,integrity}))};
 await writeFile(join(work,"artifacts.json"),JSON.stringify(result,null,2)+"\n");

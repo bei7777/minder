@@ -4,18 +4,16 @@
 
 ## 从源码构建
 
-需要 Apple 芯片 Mac、Node.js 24.9 或以上版本、npm、pnpm 10.15 和可用的 macOS 签名与磁盘映像命令。将三个源码仓库放在同一父目录中，完成仓库根目录的依赖安装和构建。这些命令从 `minder/` 执行。
+需要 Apple 芯片 Mac、Node.js 24.9 或以上版本、npm 和可用的 macOS 签名与磁盘映像命令。检出发行版仓库，在仓库根目录执行以下命令即可构建桌面应用。
 
 ```sh
-pnpm run lab publish-local
-pnpm run lab test-kit
 cd desktop
 npm ci --ignore-scripts --registry=https://registry.npmjs.org/
 npm run package:mac
 npm run test:mac
 ```
 
-`package:mac` 接受已验证的发行目录，例如 `npm run package:mac -- /path/to/delivery`。目录应包含 `release.json`、`package.json`、`package-lock.json` 和 `tarballs/`。构建器核对 CLI、三个核心包和三个 Pi 扩展的版本、锁文件来源与 SHA-512，然后安装实际生产依赖。Electron ZIP 使用官方 npm 包附带的校验值。应用资源仅包含编译产物、静态页面、生产依赖和许可证。
+`package:mac` 默认读取仓库内的 `releases/minder-0.1.4.tar.gz`。桌面版 0.1.5 使用的运行时版本和归档 SHA-256 固定在 `desktop/package.json` 的 `minderRuntime` 字段中。构建器核对归档、CLI、三个核心包、三个 Pi 扩展及其锁文件，安装生产依赖后使用归档内的类型声明编译桌面代码，再用 esbuild 将前端编译为浏览器可执行的单个 ESM 文件。已有解压目录时，可以运行 `npm run package:mac -- /path/to/delivery`，构建器会把该目录与正式发行归档逐项比对。Electron ZIP 使用官方 npm 包附带的校验值。
 
 构建成功后，`../.minder-dev/macos/latest.json` 记录相对于该目录的应用路径、DMG 路径、映像 SHA-256、签名方式和七个 npm 包的 SHA-512。每次构建拥有独立目录。macOS 验收会校验映像和完整应用签名，实际调用包内 SQLite FTS5，通过 Finder 使用的 Launch Services 启动应用，并在独立配置中操作设置页面。
 
@@ -28,3 +26,5 @@ npm run test:mac
 Minder 的桌面代码与 Finder 图标采用仓库根目录的 MIT 许可证。独立实现时参阅了 `vastsa/PI-Desktop`（LGPL-3.0，提交 `649c3456af65d6a105c750a94e57b272d4cf77e9`）的 `apps/desktop/electron/main/entry.ts`、`apps/desktop/electron/preload/index.ts` 和 `apps/pi-host/` 的职责划分。
 
 Electron 采用 MIT 许可证，内含 Chromium 及其他项目的声明。应用在 `Contents/Resources/app/third-party/` 保留 Electron 的许可证及 `LICENSES.chromium.html`，并随生产依赖保留各 npm 包附带的许可证。应用图标源文件为 `assets/icon.svg`，构建时使用 resvg 和 macOS 的 `iconutil` 生成 Finder 图标。
+
+Markdown 显示使用 Marked 18.0.11 和 DOMPurify 3.5.0。应用将这两个包随前端代码分发，分别在 `third-party/marked-LICENSE.txt` 保留 Marked 的 MIT 许可证及版权声明，在 `third-party/dompurify-LICENSE.txt` 保留 DOMPurify 的 Apache-2.0 许可证。两份文件分别来自上述版本随附的 `LICENSE`。

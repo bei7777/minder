@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
 const repo = fileURLToPath(new URL("../../",import.meta.url));
+const desktop = JSON.parse(await readFile(join(repo,"desktop","package.json"),"utf8"));
 const out = join(repo,".minder-dev","macos");
 const receipt = JSON.parse(await readFile(join(out,"latest.json"),"utf8"));
 const app = resolve(out,receipt.app);
@@ -30,11 +31,19 @@ test("校验本地发行归档、应用签名、磁盘映像和内置 SQLite", a
   const bundle = JSON.parse(execFileSync("/usr/bin/plutil",["-convert","json","-o","-",join(contents,"Info.plist")],{encoding:"utf8"}));
   assert.equal(bundle.CFBundleIdentifier,"io.github.bei7777.minder");
   assert.equal(bundle.CFBundleShortVersionString,receipt.version);
+  assert.equal(receipt.version,desktop.version);
+  assert.equal(receipt.runtimeVersion,desktop.minderRuntime.version);
+  assert.equal(receipt.runtimeArchiveSha256,desktop.minderRuntime.archiveSha256);
   await access(join(contents,"Resources",bundle.CFBundleIconFile));
   for (const file of ["lib/main.js","lib/preload.cjs","lib/renderer.js","ui/index.html","ui/styles.css","LICENSE",
     "third-party/Electron-LICENSE.txt","third-party/LICENSES.chromium.html"]) await access(join(resources,file));
+  for (const name of ["marked", "dompurify"]) {
+    assert.deepEqual(await readFile(join(resources, "third-party", name + "-LICENSE.txt")),
+      await readFile(join(repo, "desktop", "node_modules", name, "LICENSE")));
+  }
   assert.deepEqual((await readdir(resources)).sort(),["LICENSE","lib","node_modules","package.json","third-party","ui"]);
   for (const pkg of receipt.packages) {
+    assert.equal(pkg.version,receipt.runtimeVersion);
     const manifest = JSON.parse(await readFile(join(resources,"node_modules",pkg.name,"package.json"),"utf8"));
     assert.equal(manifest.version,pkg.version);
     assert.equal(manifest.name,pkg.name);
