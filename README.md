@@ -2,6 +2,18 @@
 
 在个人资料目录内工作，并把文件修改、长期记忆和需要关注的事件分别留给用户审阅。默认发行版集成三个独立 Pi 扩展，日常使用需要 Node.js 22.19 或以上版本。
 
+## 从便携发行包启动
+
+解压发行包，在包含 `INSTALL.md` 与 `package-lock.json` 的目录中运行下列命令。安装会从 npm 获取锁文件指定的第三方依赖，Minder 自身的包都随归档提供。
+
+```sh
+npm run verify
+npm ci --ignore-scripts
+npx --offline minder
+```
+
+首次启动时向导会要求选择现有资料目录和模型。如果准备稍后配置模型，可以使用 `init --root <现有目录> --provider ollama --model <模型名> --no-verify`，随后进入终端工作台。配置好服务后，运行 `npx --offline minder verify` 验证一次真实的工具调用。
+
 ## 从本地仓库运行
 
 将 `pi-minder`、`dsh-plugin-minder` 和 `minder` 放在同一父目录。在 pi-minder 内运行 `pnpm install --frozen-lockfile`、`pnpm build`；在本仓运行相同两个命令。然后执行：
@@ -22,7 +34,7 @@ node packages/cli/lib/bin.js ask "请列出这次任务的约束。"
 
 ## 分发和验收
 
-开发依赖使用 pnpm 工作区；消费者安装已编译 npm 包。本地 tarball 验收使用回环 npm 注册表，详见 [开发计划](DEVELOPMENT.md) 与 [CLI 使用说明](packages/cli/README.md)。`@minder/cli` 提供执行文件 `minder`。公有 npm 的同名无 scope 包属于其他项目，请使用本项目生成的归档或经授权发布的 scope。
+开发依赖使用 pnpm 工作区，消费者安装已编译 npm 包。本地 tarball 验收使用回环 npm 注册表。`@minder/cli` 提供执行文件 `minder`。公有 npm 的无 scope 同名包属于其他项目，使用便携目录中的本机命令即可启动这里的 Minder。[开发计划与接口](DEVELOPMENT.md) · [安装和升级验收命令](DISTRIBUTION.md) · [CLI 使用说明](packages/cli/README.md)
 
 ```sh
 pnpm lab publish-local

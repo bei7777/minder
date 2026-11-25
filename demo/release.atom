@@ -7,6 +7,6 @@
     <id>urn:minder:development-plan</id>
     <title>Minder development plan</title>
     <updated>2026-11-25T00:00:00Z</updated>
-    <summary>The development plan covers file undo, reviewed memory and scheduled event triage.</summary>
+    <summary>Minder records file changes before publishing them. Users can review proposed memories. The firewall keeps a local event history. The release kit includes package integrity checks.</summary>
   </entry>
 </feed>

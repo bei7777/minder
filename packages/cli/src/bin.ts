@@ -97,6 +97,8 @@ async function workbench(config:Config) {
         const group=await select({message:"选择提醒",choices:groups.map(g=>({value:g,name:safe(g.title)+" · "+g.events.length}))});
         const item=group.events.length===1?group.events[0]:await select({message:"选择汇总事项",choices:group.events.map(e=>({name:safe(e.title),value:e}))});
         output(item.title+"\n"+item.summary);
+        const draft=item.draftPreviewOnly ? db.get(item.id).action?.text : item.action.text;
+        output("草稿\n"+required(draft,"草稿内容"));
         if(await confirm({message:safe(item.action?.label ?? "接受本地草稿")+"？",default:false})) output(db.accept(item.id,item.revision));
       }
     } finally { db.close(); }

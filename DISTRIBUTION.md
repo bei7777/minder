@@ -14,6 +14,7 @@
 | `pnpm lab kit`、`pnpm lab test-kit` | 生成十个 tarball 的便携目录，搬到独立目录验证 SHA-512，只用普通 npm 安装并执行 CLI。成功后将第三方依赖锁文件写回 `.minder-dev/delivery/`。 |
 | `pnpm lab test-upgrade <上次发布清单的绝对路径>` | 先安装上次正式产物，生成配置、文件事务和待审记忆，再升级并验证可读、可审阅和可撤销。也接受依赖已在本机注册表中的旧版 CLI 压缩包。首次发布没有升级基线。 |
 | `pnpm lab run -- --help` | 在独立安装目录执行 CLI 及传入参数。各次 run 共用 `.minder-dev/distribution/user/` 中的配置和资料，可连续执行初始化、对话和审阅。 |
+| `pnpm exec node tests/distribution/quiet-rate.mjs` | 监听实际 TypeScript 编译写入的文件，并接收一条显式要求提醒的发行公告。分别计算普通构建活动的静默率和高优公告的投递率，逐项证据保存在本地运行目录。执行期间保持同一包的其他构建暂停。 |
 
 包清单写入 `.minder-dev/distribution/release.json`，包含版本、SHA-512、归档绝对路径、源码提交、工作区是否有待提交更改和打包环境。每组产物拥有独立注册表存储。发布候选版本时，从干净的固定提交构建，并同时保留发布清单及其指向的压缩包，供下一次升级验收使用。私有注册表登录信息和个人测试配置留在本机。
 

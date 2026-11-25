@@ -44,3 +44,51 @@ Markdown 保存长期事实、带到期时间的活动状态和每日摘要；SQ
 首次选择模型、工作目录与通知方式，支持本地 Ollama 探测、API Key 以及真实工具调用验证。终端可审阅文件、记忆和通知，支持显式授予不可恢复操作。演示使用工作区内的真实普通文件。验证干净环境从 tarball 安装、执行、升级与恢复。
 
 平台矩阵为 macOS、Linux、Windows 原生、WSL Linux 卷与 /mnt/c。Windows 验证文件占用、盘符、UNC 与重解析点。CLI 的普通运行只需要受支持的 Node 和 npm；开发构建使用 pnpm。真实模型、远程渠道和市场收录各自记录前提与实际结果，未验证结果不登记为通过。
+
+## 仓库布局与接口
+
+下表中的路径相对于各自仓库。三个核心包只处理本地数据，不导入宿主 SDK。每个宿主负责核实用户身份、确定允许访问的资料目录、区分模型提案和用户操作、接收会话结束或取消事件，以及显示结果。
+
+| 仓库 | 目录 | 负责的工作 |
+| --- | --- | --- |
+| pi-minder | `packages/core-{snapshot,memory,firewall}/src/` | 文件事务、记忆修订、事件评分与投递，每个包单独编译为 ESM 和 TypeScript 声明 |
+| pi-minder | `packages/pi-minder-{snapshot,memory,firewall}/`、`tests/pi-host/` | 注册 Pi 工具与用户命令，将宿主生命周期传给各自的核心，用实际 Pi Session 验证 |
+| dsh-plugin-minder | `packages/{snapshot,memory,firewall}/`、`tests/` | 每个包有独立的 Cordis 入口及配置补丁，测试加载 npm 包后的真实 DSH profile |
+| minder | `packages/cli/src/{bin,config,session,watch}.ts` | 用户命令、初始化、Pi SDK 会话和独立目录及订阅监听进程 |
+| minder | `scripts/lab.mjs`、`tests/distribution/`、`demo/` | 从三个仓库生成 npm 压缩包、逐包校验、安装、升级和记录终端演示 |
+
+| 核心入口 | 宿主传入 | 宿主得到 |
+| --- | --- | --- |
+| `openSnapshot(options: SnapshotOptions)` | 私有状态目录、允许管理的根目录、可选保护目录和容量上限 | `begin(label)` 返回一次任务的事务，公开 read、write、remove、move、commit、abort。commit、diff 和 undo 返回含路径、变更类型、前后摘要与补丁的 `FileDiff` |
+| `new MemoryStore(vaultDir)` | Markdown 目录。每条 `MemoryInput` 指定稳定事实键、层级、正文、来源、意图，并为活动状态提供 expiresAt | propose、diff 产生写前及写后文本。commit 返回修订编号与变更，可按键接受或拒绝。revert 写入反向修订。search 仅检索当前生效的笔记 |
+| `new Firewall(stateDir)` | `SourceEvent` 带来源、外部编号、修订、时间、标题、摘要及可选行动草稿。configure 接收优先级、时区、免打扰及冷却规则 | ingest 返回含分数和原因的 `Decision`。dispatchDue 处理到期投递，inbox 提供汇总和行动卡，accept(id, revision) 产生回执，explain 展示评分依据 |
+
+## 本地数据与恢复
+
+默认数据目录为 `~/.minder`，通过 `MINDER_HOME` 可以指定其他目录。放在资料目录外可以将模型允许操作的文件与配置、凭据、索引、历史分开。
+
+| 相对路径 | 保存内容 | 恢复或编辑方式 |
+| --- | --- | --- |
+| `snapshot/objects/`、`snapshot/journal.sqlite`、`snapshot/writer.sqlite` | 内容按 SHA-256 去重，transactions 记录事务状态，entries 记录更改前后的对象和模式，exceptions 记录大文件操作。writer.sqlite 协调进程间写入 | 事务开始先取得写入权，提交及撤销先逐项检查内容和权限位。进程中断后按日志记录的方向继续，遇到外部冲突时保留现场 |
+| `memory/core/`、`memory/active/`、`memory/episodic/`、`memory/archive/` | Markdown 正文及带来源的 YAML 元数据，活动状态含到期时间，每日摘要含会话引用 | 用户可以直接编辑。批准时复核原始摘要，发生冲突则保留用户文字。外部观察只生成待审内容 |
+| `memory/.minder/memory.sqlite`、`memory/.minder/index.sqlite` | sessions、proposals、commits 和 episode_cursor 保存审阅与恢复记录。独立的 memory_fts 和 indexed_files 保存检索索引 | 备份 Markdown 及修订数据库。关闭连接后可删除并重建索引，三个字符以下的短词使用子串检索 |
+| `firewall/state.sqlite` | events 用来源、外部编号、修订唯一识别事件。decision_policies 保存当时规则，settings 保存当前规则，receipts 保存草稿确认，cursors 和 lease 管理监听进度 | 重启后按到期时间继续投递。重复接受同一修订返回原回执。修改当前规则后，历史记录仍可展示评分时的规则 |
+
+## 构建与各阶段联调
+
+开发机将三个仓库并排放置，每仓先执行 `pnpm install --frozen-lockfile`。Pi 仓内部使用 `workspace:^`，pnpm pack 时改写为已发布版本范围。其余两仓通过工作区根目录的 overrides 指向相邻仓源码包。对外发布的包使用 npm 版本依赖。每次检查压缩包在新目录的安装结果，能够发现本地链接掩盖的入口错误、遗漏的声明文件和依赖。
+
+| 阶段 | 开发者执行的命令 | 必须观察到的结果 |
+| --- | --- | --- |
+| Phase 1 | 在 pi-minder 执行 `pnpm build`、`pnpm --filter @minder/core-snapshot test`。在 minder 执行 `pnpm lab publish-local @minder/core-snapshot pi-minder-snapshot dsh-plugin-minder-snapshot`。完整发行版使用 `pnpm lab publish-local` 和 `pnpm lab verify-release` | Pi 和 DSH 的工具提交文件，CLI 展示 File Diff，撤销后原文件校验值相同 |
+| Phase 2 | 在 pi-minder 执行 `pnpm --filter @minder/core-memory test`。在 dsh-plugin-minder 执行 `pnpm test`。在 minder 执行 `pnpm build`、`pnpm test` | 审阅一个事实，检索已接受文字，编辑 Markdown 后拒绝过期提案，撤销修订能恢复旧内容 |
+| Phase 3 | 在 pi-minder 执行 `pnpm --filter @minder/core-firewall test`。在 minder 执行完整 `pnpm lab publish-local`、`pnpm lab test-hosts` 和 `pnpm lab demo record` | 真实目录变更和订阅出现在记录中，符合规则的事件生成可操作卡片，并保存接受回执 |
+| Phase 4 | 在 minder 执行 `pnpm lab verify-release`、`pnpm lab test-upgrade <旧版清单路径>`、`pnpm lab kit`、`pnpm lab test-kit`。提供模型后运行 `minder verify` | 干净安装能启动，旧版配置、事务和待审记忆可继续使用。模型验证以实际工具成功读取文件且回答包含随机内容为通过条件 |
+
+## 上游兼容与公开发布
+
+项目使用 `type: "module"`、TypeScript NodeNext 和带 .js 后缀的相对导入。包通过 main、exports、types 声明编译入口。Pi 通过 `keywords: ["pi-package", ...]` 和 `pi.extensions: ["./lib/index.js"]` 登记资源。DSH 使用指向 `./lib/index.js` 的导出、`files: ["lib/", "cordis.patch.yml", "LICENSE"]` 和 `dsh.bundle.patch: "./cordis.patch.yml"`。补丁中的 insert 行以包名加载插件。各包可运行 `pnpm run build`，代码生成由 tsc 完成。
+
+Pi 与 DSH 的工具事件、会话结束时机和人工确认接口由适配器处理。升级时固定新的宿主版本，重新执行真实宿主、取消、独立安装及升级测试。DSH 0.2.2-rc.5 安装时要求显式选择 profile，例如 `dsh plugin --profile web add dsh-plugin-minder-memory@0.1.2`。CLI 在 Pi SDK 会话中只装载三个受管扩展。直接将扩展装入自己的宿主时，同进程内其他插件拥有该进程的系统权限。
+
+公网上架需使用有发布权限的 npm 名称、scope 和公开 Git 仓库地址。填写真实 repository 及包子目录，发布核心、各自插件及 CLI，再分别用干净 profile 检查安装与公共目录的展示版本。DSH 社区 Plugin Hub 和宿主 Discover 的索引来源分别配置。Windows 原生、WSL Linux 文件系统和 Windows 挂载卷分别验证目录链接、文件占用、权限与重命名。CoW 的可用性取决于源和目的卷，复制后实际磁盘占用取决于文件系统。

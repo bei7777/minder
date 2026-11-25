@@ -25,7 +25,7 @@ test("CLI 首次配置、SDK 宿主装载、权限和记忆审阅",async()=>{
   const diag=await value("doctor","--json");
   assert.ok(diag.tools.includes("minder_move"));
   assert.ok(!diag.tools.includes("bash"));
-  assert.equal(diag.version,"0.1.1");
+  assert.equal(diag.version,JSON.parse(await readFile(new URL("../package.json",import.meta.url),"utf8")).version);
   assert.equal((await value("permissions")).workspace,root);
   assert.deepEqual(await value("audit"),[]);
   const note=new MemoryStore(join(state,"memory"));

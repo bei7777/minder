@@ -1,6 +1,6 @@
 {
   "name": "@minder/cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A personal agent with recoverable file operations, editable memory and a quiet local inbox",
   "license": "MIT",
   "type": "module",
@@ -12,11 +12,11 @@
   "dependencies": {
     "@earendil-works/pi-coding-agent": "1.6.0",
     "@inquirer/prompts": "7.10.1",
-    "@minder/core-firewall": "0.1.1",
-    "@minder/core-memory": "0.1.1",
-    "@minder/core-snapshot": "0.1.1",
-    "pi-minder-firewall": "0.1.1",
-    "pi-minder-memory": "0.1.1",
-    "pi-minder-snapshot": "0.1.1"
+    "@minder/core-firewall": "0.1.2",
+    "@minder/core-memory": "0.1.2",
+    "@minder/core-snapshot": "0.1.2",
+    "pi-minder-firewall": "0.1.2",
+    "pi-minder-memory": "0.1.2",
+    "pi-minder-snapshot": "0.1.2"
   }
 }

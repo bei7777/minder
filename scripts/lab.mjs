@@ -159,7 +159,7 @@ async function registry(manifest,action) {
   }
 }
 
-async function publish(manifest,context) {
+async function publish(manifest,context,tag="latest") {
   for (const pkg of manifest.packages) {
     const {origin,publishEnv,runDir} = context;
     const endpoint = origin+"/"+pkg.name.replace("/","%2f");
@@ -167,7 +167,7 @@ async function publish(manifest,context) {
     if (metadata.status !== 404 && !metadata.ok) throw new Error("Local package lookup failed: "+metadata.status);
     const existing = metadata.ok ? (await metadata.json()).versions?.[pkg.version] : null;
     if (!existing) {
-      await run([...npm,"publish",pkg.file,"--registry="+origin,"--access=public","--ignore-scripts"],{cwd:runDir,env:publishEnv});
+      await run([...npm,"publish",pkg.file,"--registry="+origin,"--tag="+tag,"--access=public","--ignore-scripts"],{cwd:runDir,env:publishEnv});
     }
     const response = await fetch(endpoint);
     assert.ok(response.ok);
@@ -271,7 +271,7 @@ if (command==="publish-local") {
       if (args[0].endsWith(".json")) {
         const historical = json(resolve(args[0]));
         assert.ok(historical.packages.every(p=>registryPackages.some(pattern=>p.name.startsWith(pattern.slice(0,-1)))),"Unexpected historical package");
-        await publish(historical,ctx);
+        await publish(historical,ctx,"baseline");
         previous = spec(historical,"@minder/cli");
       } else previous = resolve(args[0]);
     }

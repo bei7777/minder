@@ -75,7 +75,23 @@ async function recordFeed() {
     await json("rules","source",feed,"5");
     await invoke("watch","--once","--feed",feed);
     const inbox = await json("inbox");
-    assert.ok(inbox.flatMap(g=>g.events).some(e=>e.title==="Minder development plan"),"Release did not arrive in the inbox");
+    const cards = inbox.flatMap(group=>group.events).filter(event=>event.title==="Minder development plan");
+    assert.equal(cards.length,1,"Each release event should generate one card");
+    const [card] = cards;
+    const source = [
+      "Minder records file changes before publishing them.",
+      "Users can review proposed memories.",
+      "The firewall keeps a local event history.",
+      "The release kit includes package integrity checks."
+    ];
+    const sentences = [...new Intl.Segmenter("en",{granularity:"sentence"}).segment(card.summary)];
+    assert.equal(sentences.length,2,"The action card must show exactly two summary sentences");
+    assert.ok(!card.summary.includes(source[3]));
+    assert.ok(card.action.label.trim() && card.action.text.trim(),"The card needs an actionable draft");
+    const audit = await json("audit",card.id);
+    assert.equal(audit.decision.sourceId,feed);
+    assert.equal(audit.decision.summary,source.join(" "));
+    assert.equal((await json("accept",card.id,card.revision)).text,card.action.text);
   } finally { await new Promise(ok=>server.close(ok)); }
 }
 if (mode==="test-install") {
