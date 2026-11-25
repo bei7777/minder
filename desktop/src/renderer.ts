@@ -5,7 +5,8 @@ import { marked } from "marked";
 const api = window.minder;
 const pages = {chat:"对话",files:"文件记录",memory:"记忆审阅",inbox:"提醒",settings:"设置"};
 type Page = keyof typeof pages;
-type Turn = {role:"user"|"assistant"; text:string; tools:string[]};
+type Part = {kind:"text"; text:string} | {kind:"tool"; id:string; name:string; state:"运行中"|"完成"|"失败"};
+type Turn = {role:"user"; text:string} | {role:"assistant"; parts:Part[]};
 function byId<T extends HTMLElement>(id:string): T {
   const element = document.getElementById(id);
   if (!element) throw new Error("界面缺少元素 "+id);
@@ -19,7 +20,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag:K, value="", className=""
 }
 const view=byId("content"), actions=byId("actions"), notice=byId("notice");
 let page:Page="chat", generation=0;
-let status:DesktopStatus, sending=false, draft="", activeTurn:Turn|undefined;
+let status:DesktopStatus, sending=false, draft="", activeTurn:Extract<Turn,{role:"assistant"}>|undefined;
 const turns:Turn[]=[];
 let nextDetail=0;
 let noticeTimer: number | undefined;
@@ -125,9 +126,14 @@ function displayTurns() {
     const turn=turns[n]!;
     const item=el("article","","message "+turn.role);
     item.append(el("h3",turn.role==="user"?"你":"Minder"));
-    if(turn.role==="assistant" && turn.text) item.append(markdown(turn.text));
-    else item.append(el("p",turn.text || (sending?"正在处理…":"")));
-    for(const tool of turn.tools) item.append(el("div",tool,"tool-line"));
+    if(turn.role==="user") item.append(el("p",turn.text));
+    else {
+      if(!turn.parts.length) item.append(el("p",sending?"正在处理…":"本次回答已停止。"));
+      for(const part of turn.parts) {
+        if(part.kind==="text") item.append(markdown(part.text));
+        else item.append(el("div",part.name+" · "+part.state,"tool-line"));
+      }
+    }
     const existing=log.children[n];
     if(existing) existing.replaceWith(item); else log.append(item);
   }
@@ -158,11 +164,11 @@ function renderChat() {
   const send=async()=>{
     if(sending || !draft.trim()) return;
     const prompt=draft.trim(); draft=""; sending=true; inform("");
-    turns.push({role:"user",text:prompt,tools:[]});
-    const response:Turn={role:"assistant",text:"",tools:[]}; activeTurn=response; turns.push(response);
+    turns.push({role:"user",text:prompt});
+    const response:Turn={role:"assistant",parts:[]}; activeTurn=response; turns.push(response);
     renderChat();
     try { await api.send(prompt); }
-    catch(err) { report(err); if(!response.text) response.text="这次请求未完成。"; }
+    catch(err) { report(err);response.parts.push({kind:"text",text:"这次请求未完成。"}); }
     finally { sending=false; activeTurn=undefined; if(page==="chat"){ renderChat(); byId("prompt").focus(); } }
   };
   text.onkeydown=e=>{
@@ -428,14 +434,17 @@ toggle.addEventListener("click",()=>{
   setSidebar(collapsed);localStorage.setItem("minder:sidebar",collapsed?"collapsed":"open");
 });
 const unsubscribe=api.onEvent(event=>{
-  if(event.type==="delta" && activeTurn){activeTurn.text+=event.text;scheduleTranscript();}
+  if(event.type==="delta" && activeTurn && event.text) {
+    const tail=activeTurn.parts.at(-1);
+    if(tail?.kind==="text") tail.text+=event.text;
+    else activeTurn.parts.push({kind:"text",text:event.text});
+    scheduleTranscript();
+  }
   else if(event.type==="tool" && activeTurn){
-    if(event.phase==="start") activeTurn.tools.push(event.name+" · 运行中");
-    else {
-      const label=event.name+" · "+(event.failed?"失败":"完成");
-      const n=activeTurn.tools.lastIndexOf(event.name+" · 运行中");
-      if(n>=0) activeTurn.tools[n]=label; else activeTurn.tools.push(label);
-    }
+    const state=event.phase==="start"?"运行中":event.failed?"失败":"完成";
+    const tool=activeTurn.parts.find(part=>part.kind==="tool" && part.id===event.id);
+    if(tool?.kind==="tool") tool.state=state;
+    else activeTurn.parts.push({kind:"tool",id:event.id,name:event.name,state});
     scheduleTranscript();
   }
 });

@@ -184,8 +184,8 @@ export class DesktopBackend implements Omit<MinderDesktop,"onEvent"> {
       runtime.session.subscribe(event=>{
         if(event.type==="message_update" && event.assistantMessageEvent.type==="text_delta")
           this.host.emit({type:"delta",text:event.assistantMessageEvent.delta});
-        if(event.type==="tool_execution_start") this.host.emit({type:"tool",phase:"start",name:event.toolName});
-        if(event.type==="tool_execution_end") this.host.emit({type:"tool",phase:"end",name:event.toolName,failed:event.isError});
+        if(event.type==="tool_execution_start") this.host.emit({type:"tool",phase:"start",id:event.toolCallId,name:event.toolName});
+        if(event.type==="tool_execution_end") this.host.emit({type:"tool",phase:"end",id:event.toolCallId,name:event.toolName,failed:event.isError});
       });
       this.session=runtime;this.sessionKey=key;
       return runtime;

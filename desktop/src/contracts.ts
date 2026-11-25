@@ -28,7 +28,7 @@ export interface DesktopSettings {
 
 export type DesktopEvent =
   | {type: "delta"; text: string}
-  | {type: "tool"; name: string; phase: "start" | "end"; failed?: boolean}
+  | {type: "tool"; id: string; name: string; phase: "start" | "end"; failed?: boolean}
   | {type: "changed"};
 
 export interface MinderDesktop {
