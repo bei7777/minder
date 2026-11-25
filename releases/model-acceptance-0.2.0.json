@@ -1,0 +1,31 @@
+{
+  "version": "0.2.0",
+  "artifact": "minder-0.2.0.tar.gz",
+  "sha256": "ecbcbe758e39a3fd558059259f8d76db5b6367c1238e0ebf7bef609214fcb75f",
+  "testedOn": "2026-11-25",
+  "provider": "dmxapi",
+  "model": "deepseek-flash-guan",
+  "node": "v25.4.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "verifiedTarballs": 10,
+  "fileAndMemory": {
+    "tools": ["minder_memory_propose", "read", "write"],
+    "initVerified": true,
+    "verifyReadNonce": true,
+    "managedWrite": true,
+    "fileDiff": true,
+    "undoByteIdentical": true,
+    "pendingMemory": true,
+    "realModelRequests": 7
+  },
+  "tasks": {
+    "tools": ["minder_list_files", "minder_task_create", "minder_task_list", "minder_task_update", "minder_task_complete"],
+    "separateCliConversations": 4,
+    "directoryListing": true,
+    "created": true,
+    "inbox": true,
+    "rescheduled": true,
+    "completed": true
+  }
+}
