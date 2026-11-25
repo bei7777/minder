@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, realpath, stat, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -36,7 +36,11 @@ const app = await electron.launch({executablePath:join(contents,"MacOS","Minder"
 try {
   const page = await app.firstWindow();
   page.setDefaultTimeout(15_000);
-  const save = () => page.getByRole("button",{name:/^保存(?:设置|并开始对话)/}).click();
+  async function save() {
+    await page.getByRole("button",{name:/^保存(?:设置|并开始对话)/}).click();
+    await page.locator("#notice").filter({hasText:/已保存/}).waitFor();
+    assert.equal(await page.locator("[data-page][aria-current=page]").getAttribute("data-page"),"chat");
+  }
   const prompt = page.locator("#prompt");
   const settings = page.locator("[data-page=settings]");
   if(scenario==="first-run") {
@@ -46,7 +50,9 @@ try {
       await execute("osascript",[script,String(app.process().pid),path],{env,timeout:20_000});
     }
     await pick(/选择目录/,root);
+    await page.getByText(await realpath(root),{exact:true}).waitFor();
     await pick(/选择供应商 JSON/,providerFile);
+    await page.getByText(basename(providerFile),{exact:true}).waitFor();
     await page.getByLabel("供应商",{exact:true}).selectOption("dmxapi");
     await page.getByLabel("模型",{exact:true}).selectOption(model);
     await save();
