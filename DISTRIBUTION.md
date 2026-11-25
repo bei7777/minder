@@ -24,4 +24,4 @@
 
 本机注册表绑定动态分配的回环端口，进程随命令退出。Minder 包只能发布到该回环地址。第三方依赖通过 pnpm 已配置的 HTTPS 注册表获取，也可以通过 `MINDER_LAB_UPLINK` 设置公开镜像。安装运行时禁用依赖安装脚本，检查平台用户从编译产物启动的能力。真实模型验证可在具备 Ollama 或获授权的 API Key 的机器上用安装后的 `minder verify` 执行。
 
-跨仓库 CI 由仓库所有者通过 Actions 手工指定另外两个仓库及提交启动。矩阵实际执行 macOS、Linux 和 Windows 签出、编译、核心测试、注册表安装、演示与宿主加载。本机 WSL 验收另需在 WSL 原生文件系统和 `/mnt/c` 的独立工作区分别执行三仓库构建和测试，核对 Windows 占用文件、junction 和跨卷复制结果。工作流和验收命令描述待执行的检查；通过状态应取自实际作业结果。
+跨仓库 CI 通过 Actions 手工指定 Pi 和 DSH 仓库及完整提交编号。macOS、Linux、Windows 原生作业分别执行编译、核心测试、注册表安装、便携包验收、升级和宿主加载。第四个作业在 Windows runner 启动真正的 WSL2，检查 Linux 工作目录为 ext4、Windows 挂载卷为 9p 或 drvfs；它在两个卷上分别验证旧数据升级，另行执行跨卷快照和恢复。工作流见 [.github/workflows/distribution.yml](.github/workflows/distribution.yml)，已执行的版本和结果见 [0.1.4 验收记录](releases/0.1.4.md)。

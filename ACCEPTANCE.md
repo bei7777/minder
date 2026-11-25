@@ -1,5 +1,7 @@
 # Minder 0.1.3 验收记录
 
+本页记录 0.1.3 发行时的环境和检查结果。Windows、WSL2、公开源码仓库和桌面版的后续验收见 [0.1.4 验收记录](releases/0.1.4.md)。
+
 验收日期为 2026 年 11 月 25 日。归档包含 @minder/cli 0.1.3 和九个 0.1.2 的核心及扩展包。九个包与上次发行物逐包核对 SHA-512 后直接复用。归档内的 release.json 记录每个包的 SHA-512、完整 Git 提交编号和构建时工作区状态，三个源码目录在构建时均干净。十个归档的集合摘要为 `124759c0686ed3c554a209f4a4cff7a63da0379ba77f4c1beb69545be10e060c`。
 
 | 仓库 | 构建提交 | 本次产物 |
@@ -38,6 +40,3 @@ Pi 使用固定的 SDK 1.6.0，DSH 使用 0.2.2-rc.5 和 Cordis 4.1.0。macOS �
 | --- | --- |
 | 其他模型 | 实际网络验证使用获授权的 dmxapi / deepseek-flash-guan 配置。切换到其他服务或本机 Ollama 时，可执行 `minder verify` 检查该模型的工具调用能力 |
 | 真实个人事件 | 需要按用户偏好标注的目录与订阅事件，在代表性时间段同时计算普通事件静默率与明确要求提醒事件的投递率。上面的受控工程测量不能给出这个数值 |
-| Windows 与 WSL | 已提交 macOS/Linux/Windows CI 和 WSL2 runner 配置。Windows 原生、WSL Linux 卷及 Windows 挂载卷的真实测试结果待补充，重点检查占用文件、junction、盘符以及跨卷行为 |
-| 公网发布 | 三个仓库均为本地仓库，本机没有公共 npm 的登录凭据。公有 npm 的 minder 名称已有其他发布者，Minder 的 CLI 包名为 @minder/cli。公开发布还需要有权限的 scope 和实际公开 GitHub 仓库，包中的 repository 应指向该仓库及包子目录 |
-| 市场展示 | Pi 包已具备 pi-package 关键词和扩展入口。社区 DSH Hub 的 CLI 0.5.0 要求真实公开的 GitHub repository URL，三个本地 DSH 包在这一校验项停下。公开 npm 发布、Pi 目录收录、DSH Hub 展示及 DSH Discover 的索引配置须分别核验 |
