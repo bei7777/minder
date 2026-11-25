@@ -172,7 +172,7 @@ export class DesktopBackend implements Omit<MinderDesktop,"onEvent"> {
     this.task=(async()=>{
       const session=(await this.getSession(await configuration())).session;
       if(this.cancelled) return;
-      await session.prompt(prompt);
+      await session.prompt(prompt,{expandPromptTemplates:false});
       const last=session.messages.findLast(entry=>entry.role==="assistant");
       if(!this.cancelled && (!last || last.stopReason==="error" || last.stopReason==="aborted"))
         throw new Error("模型未完成回答，请检查模型服务与授权");
