@@ -24,18 +24,29 @@ delete env.ELECTRON_RUN_AS_NODE;
 const providerFile = await realpath(process.env.MINDER_TEST_PROVIDER_FILE ?? join(repo, "../..", "api-credentials.local.json"));
 const providers = JSON.parse(await readFile(providerFile,"utf8")).providers;
 const model = providers.dmxapi.models[0].id;
+const launchOptions={env,cwd:root,args:["--user-data-dir="+join(area,"profile")],timeout:60_000};
 if(scenario==="existing") {
   assert.ok(previousBundle,"Pass the previous Minder 0.1.5 app as the third argument");
+  assert.notEqual(await realpath(previousBundle),await realpath(bundle));
   const oldApp=resolve(previousBundle,"Contents","Resources","app");
   assert.equal(JSON.parse(await readFile(join(oldApp,"package.json"),"utf8")).version,"0.1.5");
   const cli=join(oldApp,"node_modules","@minder","cli");
   assert.equal(JSON.parse(await readFile(join(cli,"package.json"),"utf8")).version,"0.1.4");
   await execute(process.execPath,[join(cli,"lib","bin.js"),"init","--root",root,"--provider-file",providerFile,
     "--provider","dmxapi","--model",model,"--no-verify"],{env,cwd:root});
+  const previous=await electron.launch({...launchOptions,executablePath:resolve(previousBundle,"Contents","MacOS","Minder")});
+  try {
+    assert.equal(await previous.evaluate(({app})=>app.getVersion()),"0.1.5");
+    const page=await previous.firstWindow();
+    await page.getByRole("textbox",{name:"任务"}).waitFor();
+    await page.locator("[data-page=settings]").click();
+    await page.getByRole("button",{name:/^保存设置/}).click();
+    await page.getByRole("textbox",{name:"任务"}).waitFor();
+    assert.equal((await page.evaluate(()=>window.minder.status())).model,model);
+  } finally {await previous.close();}
 }
 
-const app = await electron.launch({executablePath:join(contents,"MacOS","Minder"),env,cwd:root,
-  args:["--user-data-dir="+join(area,"profile")],timeout:60_000});
+const app = await electron.launch({...launchOptions,executablePath:join(contents,"MacOS","Minder")});
 try {
   const page = await app.firstWindow();
   page.setDefaultTimeout(15_000);
