@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { join } from "node:path";
+import { createRequire } from "node:module";
 import { parseArgs, stripVTControlCharacters } from "node:util";
 import { confirm, input, select } from "@inquirer/prompts";
 import { openSnapshot } from "@minder/core-snapshot";
@@ -9,6 +10,8 @@ import { atomicJSON, configuration, home, installed, setup, type Config } from "
 import { chat, openSession, verify } from "./session.js";
 import { watch } from "./watch.js";
 
+const version = createRequire(import.meta.url)("../package.json").version as string;
+
 const help = `Minder · 个人助手
 
 minder                        终端工作台
@@ -16,9 +19,11 @@ minder init                   配置模型、资料目录并验证工具调用
   --root DIR --provider ollama|deepseek --model ID [--no-verify]
 minder chat | ask TEXT        打开会话或提交一条请求
 minder files [ID] | undo ID   查看文件差异、撤销事务
-minder memory pending | search TEXT | diff SESSION | commit SESSION [KEY] | discard SESSION [KEY] | revert ID | history
+minder memory pending | search TEXT | diff SESSION | commit SESSION [KEY] | discard SESSION [KEY] | history | show ID | revert ID
 minder inbox | accept ID REV  查看行动卡，接受草稿并记录回执
 minder rules [quiet START END ZONE | source SOURCE SCORE]
+minder audit [ID]             查看事件记录、评分依据与等待原因
+minder permissions            查看模型、文件、草稿和监听权限
 minder watch [--once] [--feed URL ...] [--score-model OLLAMA_MODEL]
 minder doctor [--json] | verify
 
@@ -124,7 +129,7 @@ async function main() {
       const host=await openSession(cfg);
       try {
         await host.session.bindExtensions({});
-        output({version:"0.1.0",node:process.version,home,root:cfg.root,model:cfg.model,
+        output({version,node:process.version,home,root:cfg.root,model:cfg.model,
           verified:cfg.verified,tools:host.session.getActiveToolNames(),diagnostics:host.diagnostics});
       } finally { await host.dispose(); }
       return;
@@ -132,11 +137,17 @@ async function main() {
     case "files": output(await files(cfg,args[1])); return;
     case "undo": output(await files(cfg,args[1],true)); return;
     case "watch": return watch(cfg,values.feed ?? [],Boolean(values.once),values["score-model"]);
+    case "permissions":
+      output({workspace:cfg.root,state:home,modelProvider:cfg.provider,model:cfg.model,
+        writes:"受管文件工具，默认写前快照",largeFiles:"需要单独确认不可恢复操作",
+        shell:"模型没有 Shell 工具",actionCards:"保存本地草稿和回执",notifications:"本机收件箱",
+        feedAccess:"由用户选择订阅来源",background:"minder watch 进程运行期间监听"}); return;
     case "memory": {
       const db=new MemoryStore(join(home,"memory"));
       try {
         switch(args[1]) {
           case "history": output(db.history()); break;
+          case "show": output(db.show(required(args[2],"修订标识"))); break;
           case "diff": output(db.diff(required(args[2],"会话标识"))); break;
           case "pending": output(db.pendingSessions()); break;
           case "commit": output(db.commit(required(args[2],"会话标识"),args[3]?[args[3]]:undefined)); break;
@@ -148,10 +159,11 @@ async function main() {
       } finally { db.close(); }
       return;
     }
-    case "rules": case "inbox": case "accept": {
+    case "rules": case "inbox": case "accept": case "audit": {
       const db=new Firewall(join(home,"firewall"));
       try {
-        if(command==="inbox") {db.dispatchDue();output(db.inbox());}
+        if(command==="audit") output(args[1]?db.explain(args[1]):db.list().map(e=>({id:e.id,source:e.sourceId,title:e.title,score:e.score,status:e.status,reason:e.reason})));
+        else if(command==="inbox") {db.dispatchDue();output(db.inbox());}
         else if(command==="accept") output(db.accept(required(args[1],"卡片标识"),required(args[2],"修订标识")));
         else if(args[1]==="quiet") output(db.configure({quietStart:required(args[2],"开始时间"),quietEnd:required(args[3],"结束时间"),timezone:required(args[4],"时区")}));
         else if(args[1]==="source") {

@@ -9,3 +9,5 @@ Minder 是基于 Pi SDK 的本地个人助手，包含可撤销的文件修改�
 `minder watch --feed URL` 负责监听资料目录、轮询订阅和投递至本地收件箱；保持该命令运行即可在聊天关闭后继续监听。`--score-model MODEL` 允许本机 Ollama 评分；未启用评分时，无明确规则的事件默认归档。`minder rules source URL 5` 将指定订阅设为立即提醒。`minder inbox` 查看卡片，`minder accept ID REV` 将当前草稿保存为已审阅并返回文字。外部发送渠道需要单独实现。
 
 文件事务支持普通文件。基本内容和权限位可还原；特殊文件、ACL、扩展属性、目录树与外部进程直接写入不在当前可恢复范围内。推荐在用户拥有的本地资料目录运行。
+
+`minder permissions` 显示实际资料范围、模型连接方式、文件修改和草稿的授权方式。`minder audit` 列出事件及评分，`minder audit ID` 查看当时生效的规则、投递状态和等待原因。`minder memory history` 列出已接受的修订，`minder memory show ID` 展开其来源和变更内容。

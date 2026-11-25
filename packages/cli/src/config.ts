@@ -20,6 +20,10 @@ export async function configuration(): Promise<Config> {
   const config = JSON.parse(await readFile(join(home,"config.json"),"utf8"));
   if (config.version !== 1 || !["ollama","deepseek"].includes(config.provider) || !config.model?.trim()
       || typeof config.root !== "string" || !isAbsolute(config.root)) throw new Error("Minder 配置无效");
+  if (await realpath(config.root)!==config.root || !(await stat(config.root)).isDirectory())
+    throw new Error("资料目录的位置已改变，请重新选择");
+  const privateRoot=await realpath(home);
+  if (inside(config.root,privateRoot) || inside(privateRoot,config.root)) throw new Error("资料目录与私有目录重叠");
   return config;
 }
 export async function installed(): Promise<boolean> {

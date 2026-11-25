@@ -1,0 +1,62 @@
+name: Local package distribution
+on:
+  workflow_dispatch:
+    inputs:
+      pi_repository:
+        description: Pi workspace repository (owner/name)
+        required: true
+      pi_ref:
+        description: Pi workspace commit SHA
+        required: true
+      dsh_repository:
+        description: DSH workspace repository (owner/name)
+        required: true
+      dsh_ref:
+        description: DSH workspace commit SHA
+        required: true
+permissions:
+  contents: read
+jobs:
+  distribution:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: minder
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.pi_repository }}
+          ref: ${{ inputs.pi_ref }}
+          path: pi-minder
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.dsh_repository }}
+          ref: ${{ inputs.dsh_ref }}
+          path: dsh-plugin-minder
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - run: pnpm install --frozen-lockfile
+        working-directory: pi-minder
+      - run: pnpm install --frozen-lockfile
+        working-directory: dsh-plugin-minder
+      - run: pnpm install --frozen-lockfile
+        working-directory: minder
+      - run: pnpm lab publish-local
+        working-directory: minder
+      - run: pnpm test
+        working-directory: pi-minder
+      - run: pnpm lab verify-release
+        working-directory: minder
+      - run: pnpm lab test-hosts
+        working-directory: minder
