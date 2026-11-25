@@ -2,13 +2,15 @@
 
 Minder 使用 Pi SDK 在你选定的资料目录内工作。每次文件修改都可以查看差异和撤销，长期记忆保存为可审阅的 Markdown，重要事件进入收件箱。终端版和 macOS 桌面版使用相同的三个 Pi 扩展。
 
+你可以直接问“这个目录里有哪些文档”，也可以交代“下周三提醒我核对投稿附件”。重新打开应用后，可以继续之前的委托、调整时间或标记完成。
+
 ## 在 Mac 上使用
 
-Apple 芯片 Mac 可以使用桌面版。打开 DMG，把 Minder 拖入“应用程序”，再从 Finder 打开。在设置中选择资料目录和模型即可开始对话。应用内置 Node.js。此映像使用本机 ad-hoc 签名，尚未经过 Apple 公证，下载后首次打开可能出现 Gatekeeper 提示。[下载 macOS 安装包](https://github.com/bei7777/minder/releases/download/desktop-v0.1.5/Minder-0.1.5-macos-arm64.dmg) · [桌面版使用与构建说明](desktop/README.md)
+Apple 芯片 Mac 可以使用桌面版。打开 DMG，把 Minder 拖入“应用程序”，再从 Finder 打开。在设置中选择资料目录和模型即可开始对话。应用内置 Node.js。此映像使用本机 ad-hoc 签名，尚未经过 Apple 公证，下载后首次打开可能出现 Gatekeeper 提示。[下载 macOS 安装包](https://github.com/bei7777/minder/releases/download/v0.2.0/Minder-0.2.0-macos-arm64.dmg) · [桌面版使用与构建说明](desktop/README.md)
 
 ## 从便携发行包启动
 
-终端版需要 Node.js 22.19 或更高版本。下载并解压归档，在包含 `INSTALL.md` 与 `package-lock.json` 的目录中执行以下命令。安装会从 npm 获取锁文件指定的第三方依赖，十个 Minder 包均随归档提供。[0.1.4 便携发行包](releases/minder-0.1.4.tar.gz) · [0.1.4 验收记录](releases/0.1.4.md)
+终端版需要 Node.js 22.19 或更高版本。下载并解压归档，在包含 `INSTALL.md` 与 `package-lock.json` 的目录中执行以下命令。安装会从 npm 获取锁文件指定的第三方依赖，十个 Minder 包均随归档提供。[0.2.0 便携发行包](releases/minder-0.2.0.tar.gz) · [0.2.0 验收记录](releases/0.2.0.md)
 
 ```sh
 npm run verify
