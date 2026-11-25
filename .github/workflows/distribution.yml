@@ -56,7 +56,42 @@ jobs:
         working-directory: minder
       - run: pnpm test
         working-directory: pi-minder
+      - run: pnpm test
+        working-directory: minder
       - run: pnpm lab verify-release
         working-directory: minder
       - run: pnpm lab test-hosts
         working-directory: minder
+      - run: pnpm lab test-kit
+        working-directory: minder
+
+  wsl:
+    name: WSL2 / Linux and Windows volumes
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: minder
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.pi_repository }}
+          ref: ${{ inputs.pi_ref }}
+          path: pi-minder
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.dsh_repository }}
+          ref: ${{ inputs.dsh_ref }}
+          path: dsh-plugin-minder
+          persist-credentials: false
+      - uses: Vampire/setup-wsl@d1da7f2c0322a5ee4f24975344f67fc0f5baf364 # v7.0.0
+        with:
+          distribution: Debian-12
+          wsl-version: 2
+          wsl-shell-user: root
+          additional-packages: ca-certificates curl git xz-utils
+      - name: Exercise published tarballs and verify both filesystem types
+        shell: wsl-bash {0}
+        run: bash minder/tests/distribution/wsl.sh
