@@ -22,6 +22,12 @@
 
 包清单写入 `.minder-dev/distribution/release.json`，包含版本、SHA-512、归档绝对路径、源码提交、工作区是否有待提交更改和打包环境。每组产物拥有独立注册表存储。发布候选版本时，从干净的固定提交构建，并同时保留发布清单及其指向的压缩包，供下一次升级验收使用。私有注册表登录信息和个人测试配置留在本机。
 
-本机注册表绑定动态分配的回环端口，进程随命令退出。Minder 包只能发布到该回环地址。第三方依赖通过 pnpm 已配置的 HTTPS 注册表获取，也可以通过 `MINDER_LAB_UPLINK` 设置公开镜像。安装运行时禁用依赖安装脚本，检查平台用户从编译产物启动的能力。真实模型验证可在具备 Ollama 或获授权的 API Key 的机器上用安装后的 `minder verify` 执行。
+本机验收使用动态分配的回环端口，注册表进程随命令退出。第三方依赖通过 pnpm 配置的 HTTPS 注册表获取，也可以通过 `MINDER_LAB_UPLINK` 选择公开镜像。安装过程禁用依赖安装脚本。使用 Ollama 或获授权的模型配置时，可以用安装后的 `minder verify` 验证真实工具调用。
+
+## 准备 npm 发布
+
+从完整便携目录执行 `node scripts/public-pack.mjs .minder-dev/delivery`，输出目录中包含十个 npm 压缩包和一份 `packages.json`。公开包使用发布者的名称空间。CLI 名称为 `@bei7777/minder-cli`，三个核心包使用 `@bei7777/minder-core-snapshot`、`@bei7777/minder-core-memory` 和 `@bei7777/minder-core-firewall`。Pi 扩展与 DSH 插件保留独立名称。打包命令核对便携包的 SHA-512，更新公开包名称及 npm 依赖别名，并在重新解压后逐个比对文件。
+
+执行 `pnpm lab test-public <输出目录>/packages.json`，通过本机注册表安装这批公开名称的压缩包，检查 CLI、三个 Pi 单独安装和三个 DSH 单独安装。发布者使用已启用双因素认证的 npm 账号，在官方注册表依次发布核心包、宿主扩展和 CLI。公开发布后须从官方注册表核对各版本的 `dist.integrity`，再从两个宿主执行安装和加载，另行确认目录搜索结果。
 
 跨仓库 CI 通过 Actions 手工指定 Pi 和 DSH 仓库及完整提交编号。macOS、Linux、Windows 原生作业分别执行编译、核心测试、注册表安装、便携包验收、升级和宿主加载。第四个作业在 Windows runner 启动真正的 WSL2，检查 Linux 工作目录为 ext4、Windows 挂载卷为 9p 或 drvfs；它在两个卷上分别验证旧数据升级，另行执行跨卷快照和恢复。工作流见 [.github/workflows/distribution.yml](.github/workflows/distribution.yml)，已执行的版本和结果见 [0.1.4 验收记录](releases/0.1.4.md)。

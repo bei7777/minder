@@ -13,7 +13,7 @@ const root = fileURLToPath(new URL("../",import.meta.url));
 const lab = join(root,".minder-dev","distribution");
 const siblings = dirname(resolve(root));
 const repositories = ["pi-minder","dsh-plugin-minder","minder"];
-const registryPackages = ["@minder/*","pi-minder-*","dsh-plugin-minder-*"];
+const registryPackages = ["@minder/*","@bei7777/minder-*","pi-minder-*","dsh-plugin-minder-*"];
 const require = createRequire(import.meta.url);
 const json = path => JSON.parse(readFileSync(path,"utf8"));
 const makeDir = path => { mkdirSync(path,{recursive:true}); return path; };
@@ -249,6 +249,36 @@ if (command==="publish-local") {
   retain(manifest);
   if (manifest.packages.length===10) await publishKit(manifest);
   console.log("Local release inventory:",manifestPath);
+} else if (command==="test-public") {
+  const inventory=resolve(args[0]);
+  const packages=json(inventory);
+  assert.equal(packages.length,10);
+  const manifest={digest:inventoryDigest(packages),packages};
+  for (const pkg of packages) {
+    assert.match(pkg.file,/^[a-z0-9-]+-\d+\.\d+\.\d+\.tgz$/);
+    pkg.file=join(dirname(inventory),pkg.file);
+    assert.equal(await integrity(pkg.file),pkg.integrity,pkg.name);
+  }
+  await registry(manifest,async ctx=>{
+    await publish(manifest,ctx);
+    const cli="@bei7777/minder-cli";
+    const cwd=await install([spec(manifest,cli)],ctx);
+    const installed=json(join(cwd,"package-lock.json")).packages;
+    for (const pkg of packages.filter(pkg=>!pkg.name.startsWith("dsh-plugin-"))) {
+      const name=pkg.source.startsWith("@minder/core-")?pkg.source:pkg.name;
+      const entry=installed["node_modules/"+name];
+      assert.equal(entry.integrity,pkg.integrity,pkg.name);
+      assert.equal(json(join(cwd,"node_modules",name,"package.json")).name,pkg.name);
+    }
+    const help=await run([...npm,"exec","--offline","--","minder","--help"],{cwd,env:ctx.env,capture:true});
+    assert.match(help,/minder doctor/);
+    const host=await install(["@earendil-works/pi-coding-agent@1.6.0",...packages
+      .filter(pkg=>pkg.name.startsWith("pi-minder-")).map(pkg=>spec(manifest,pkg.name))],ctx,"pi");
+    await run([process.execPath,"tests/pi-host/independent.mjs"],{
+      cwd:join(siblings,"pi-minder"),env:{...ctx.env,MINDER_PI_INSTALL_ROOT:host},
+    });
+    await run([...pnpm,"run","test:installed"],{cwd:join(siblings,"dsh-plugin-minder"),env:ctx.env});
+  });
 } else if (command==="kit") {
   const manifest = json(manifestPath);
   retain(manifest);
@@ -345,6 +375,6 @@ if (command==="publish-local") {
     console.log("Local test evidence:",runDir);
   });
 } else {
-  console.log("pnpm lab publish-local [package names] | kit | test-kit | verify-release | test-install | test-hosts | test-init | test-upgrade <older release.json or cli.tgz> | run [CLI arguments] | demo record");
+  console.log("pnpm lab publish-local [package names] | test-public <packages.json> | kit | test-kit | verify-release | test-install | test-hosts | test-init | test-upgrade <older release.json or cli.tgz> | run [CLI arguments] | demo record");
   if (command && command!=="--help") process.exitCode=2;
 }
