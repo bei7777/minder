@@ -45,6 +45,7 @@ export interface MinderDesktop {
   cancel(): Promise<void>;
   newChat(): Promise<void>;
   tasks(): Promise<Task[]>;
+  homeTasks(): Promise<{root:string;tasks:Task[]}>;
   createTask(input:TaskInput): Promise<Task>;
   updateTask(id:string, update:TaskUpdate, revision:number): Promise<Task>;
   completeTask(id:string, revision:number): Promise<Task>;

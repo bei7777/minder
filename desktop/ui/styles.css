@@ -240,6 +240,12 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 }
 .chat-welcome p, .chat-log > .blank p { font-size: 13px; margin-top: 5px; color: var(--quiet); }
 .welcome-mark { display: block; width: 37px; height: 37px; margin-bottom: 13px; }
+.home-followups { width: 100%; padding-top: 14px; }
+.home-followups h3 { margin: 0 0 3px; color: var(--quiet); font-size: 12px; font-weight: 500; }
+.home-followup { display: grid; gap: 3px; width: 100%; padding: 8px 4px; text-align: left; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
+.home-followup strong, .home-followup small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-followup strong { font-weight: 550; }
+.home-followup small { color: var(--quiet); font-size: 12px; }
 .message { padding: 12px 0 16px; }
 .message + .message { margin-top: 3px; }
 .message h3 { font-size: 12px; margin: 0 0 8px; color: var(--quiet); }

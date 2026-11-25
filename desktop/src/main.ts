@@ -12,7 +12,7 @@ const endpoints: Record<Method, number> = {
   status: 0, chooseWorkspace: 0, chooseProvider: 0, configure: 1, verify: 0,
   openWebLink: 1,
   send: 1, cancel: 0, newChat: 0, files: 0, diff: 1, undo: 1, pending: 0,
-  tasks: 0, createTask: 1, updateTask: 3, completeTask: 2,
+  tasks: 0, homeTasks: 0, createTask: 1, updateTask: 3, completeTask: 2,
   memoryDiff: 1, review: 3, inbox: 0, accept: 2, rules: 0, saveRules: 1,
 };
 

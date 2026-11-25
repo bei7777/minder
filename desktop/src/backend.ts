@@ -217,12 +217,13 @@ export class DesktopBackend implements Omit<MinderDesktop,"onEvent"> {
   }
   async newChat(){await this.change(()=>this.disposeSession());}
 
-  private async withTasks<T>(work:(store:TaskStore)=>T) {
+  private async withTasks<T>(work:(store:TaskStore,root:string)=>T) {
     const cfg=await configuration();
     const store=new TaskStore(home,cfg.root);
-    try {return work(store);} finally {store.close();}
+    try {return work(store,cfg.root);} finally {store.close();}
   }
   tasks(){return this.withTasks(store=>store.list());}
+  homeTasks(){return this.withTasks((store,root)=>({root,tasks:store.list("open").slice(0,3)}));}
   createTask(input:TaskInput){return this.change(()=>this.withTasks(store=>store.create(input)));}
   updateTask(id:string,input:TaskUpdate,revision:number) {
     return this.change(()=>this.withTasks(store=>store.update(text(id,"委托标识",128),input,number(revision))));

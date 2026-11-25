@@ -21,6 +21,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag:K, value="", className=""
 const view=byId("content"), actions=byId("actions"), notice=byId("notice");
 let page:Page="chat", generation=0;
 let status:DesktopStatus, sending=false, draft="", activeTurn:Extract<Turn,{role:"assistant"}>|undefined;
+const workspaceDrafts=new Map<string,string>();
 const turns:Turn[]=[];
 let nextDetail=0;
 let noticeTimer: number | undefined;
@@ -108,6 +109,29 @@ function markdown(text:string) {
   prose.append(content);
   return prose;
 }
+let homeRequest=0;
+async function refreshHomeTasks() {
+  const section=document.getElementById("home-followups");
+  if(!section || page!=="chat" || turns.length || !status.configured) return;
+  const request=++homeRequest, root=status.root;
+  const result=await api.homeTasks();
+  if(!section.isConnected || request!==homeRequest || root!==status.root) return;
+  if(result.root!==root || !result.tasks.length) {section.hidden=true;section.replaceChildren();return;}
+  const signature=JSON.stringify(result.tasks.map(task=>[task.id,task.revision]));
+  if(!section.hidden && section.dataset.revisions===signature) return;
+  section.dataset.revisions=signature;
+  const heading=el("h3","待跟进的委托");
+  const links=result.tasks.map(task=>{
+    const link=button("",()=>bringTaskIntoChat(task.id));
+    link.className="home-followup";link.setAttribute("aria-label","继续跟进 "+task.title);
+    link.append(el("strong",task.title));
+    const earliest=[task.dueAt,task.followUpAt].filter((at):at is string=>at!==null).sort()[0];
+    const timing=earliest?(earliest===task.dueAt?"截止 ":"跟进 ")+localTime(earliest):"";
+    if(task.nextStep || timing) link.append(el("small",[task.nextStep,timing].filter(Boolean).join(" · ")));
+    return link;
+  });
+  section.replaceChildren(heading,...links);section.hidden=false;
+}
 function displayTurns() {
   const log=document.getElementById("chat-log");
   if(!log) return;
@@ -119,7 +143,9 @@ function displayTurns() {
     mark.setAttribute("viewBox","0 0 32 32");mark.setAttribute("class","welcome-mark");mark.setAttribute("aria-hidden","true");
     const shape=document.createElementNS(mark.namespaceURI,"use");
     shape.setAttribute("href","#mark");mark.append(shape);welcome.prepend(mark);
-    log.replaceChildren(welcome); return;
+    const upcoming=el("section","","home-followups");
+    upcoming.id="home-followups";upcoming.hidden=true;upcoming.setAttribute("aria-label","待跟进的委托");
+    log.replaceChildren(welcome,upcoming);void refreshHomeTasks().catch(report);return;
   }
   // 只刷新当前回答，保留前面消息的文本选择与滚动位置。
   if(!log.firstElementChild?.classList.contains("message")) log.replaceChildren();
@@ -150,7 +176,7 @@ function renderChat() {
     ? previousLog.scrollTop : undefined;
   view.replaceChildren(); actions.replaceChildren();
   const fresh=button("新对话",async()=>{
-    await api.newChat(); turns.length=0; draft=""; activeTurn=undefined; await navigate("chat");
+    await api.newChat(); turns.length=0; activeTurn=undefined; await navigate("chat");
   });
   fresh.disabled=sending; actions.append(fresh);
   view.classList.toggle("empty-chat",!turns.length);
@@ -219,6 +245,16 @@ let taskFilter:Task["status"]="open", selectedTask="";
 async function composeFollowUp(text:string) {
   draft=draft.trim()?draft+"\n\n"+text:text;
   await navigate("chat");byId("prompt").focus();
+}
+async function bringTaskIntoChat(id:string) {
+  const current=generation,root=status.root;
+  const task=(await api.tasks()).find(candidate=>candidate.id===id && candidate.status==="open");
+  if(current!==generation || root!==status.root) return;
+  if(!task) {await navigate(page);inform("这项委托已更新，请查看当前待跟进的事项。");return;}
+  const context=["请继续跟进这项委托。",task.title,task.nextStep && "下一步："+task.nextStep,
+    task.followUpAt && "跟进时间："+localTime(task.followUpAt),task.dueAt && "截止时间："+localTime(task.dueAt),
+    task.notes,"委托编号："+task.id].filter(Boolean).join("\n");
+  await composeFollowUp(context);
 }
 function taskDate(value:string|null) {
   const input=el("input");input.type="datetime-local";input.step="any";
@@ -301,11 +337,7 @@ async function renderTasks(current:()=>boolean) {
     if(task.notes) panel.append(el("h3","备注"),el("p",task.notes,"body-text"));
     if(task.status==="completed") return;
     const controls=stack("action-row");
-    controls.append(button("编辑委托",()=>taskEditor(task)),button("带入对话",async()=>{
-      const context=["请继续跟进这项委托。",task.title,task.nextStep && "下一步："+task.nextStep,
-        task.dueAt && "截止时间："+localTime(task.dueAt),task.notes, "委托编号："+task.id].filter(Boolean).join("\n");
-      await composeFollowUp(context);
-    }),button("标记完成",async()=>{
+    controls.append(button("编辑委托",()=>taskEditor(task)),button("带入对话",()=>bringTaskIntoChat(task.id)),button("标记完成",async()=>{
       if(!await confirmAction("完成这项委托？",task.title,"确认完成")) return;
       await api.completeTask(task.id,task.revision);taskFilter="completed";
       await navigate("tasks");inform("委托已完成");void loadInbox().catch(report);
@@ -424,12 +456,18 @@ function connectionSettings(current:()=>boolean) {
     try {
       const result=await api.configure({root,provider,model,external:method.value==="external",
         ...(method.value==="external" && selection?{providerSelectionId:selection.selectionId}:{})});
-      if(result.changedConnection) {turns.length=0;activeTurn=undefined;draft="";selectedTask="";selectedCard="";taskFilter="open";}
+      if(result.changedConnection) {
+        turns.length=0;activeTurn=undefined;selectedTask="";selectedCard="";taskFilter="open";
+        if(status.root!==result.root) {
+          if(draft) workspaceDrafts.set(status.root,draft);else workspaceDrafts.delete(status.root);
+          draft=workspaceDrafts.get(result.root)??"";
+        }
+      }
       status=result;refreshSidebar();
       if(current()) {
         await navigate("chat");byId("prompt").focus();inform("设置已保存，可以开始对话");
         void loadInbox().catch(report);
-      }
+      } else if(result.changedConnection) await navigate(page);
     } finally {saving=false;}
   },true,"正在保存…");
   const check=button("验证模型连接",async()=>{
@@ -549,6 +587,7 @@ toggle.addEventListener("click",()=>{
   setSidebar(collapsed);localStorage.setItem("minder:sidebar",collapsed?"collapsed":"open");
 });
 const unsubscribe=api.onEvent(event=>{
+  if(event.type==="changed" || event.type==="inbox-changed") void refreshHomeTasks().catch(report);
   if(event.type==="open-inbox") {
     selectedCard=event.id;
     if(status?.configured) void navigate("inbox").catch(report);
@@ -570,6 +609,8 @@ const unsubscribe=api.onEvent(event=>{
   }
 });
 window.addEventListener("pagehide",unsubscribe,{once:true});
+window.addEventListener("focus",()=>void refreshHomeTasks().catch(report));
+window.setInterval(()=>{if(!document.hidden) void refreshHomeTasks().catch(report);},15_000);
 async function start() {
   status=await api.status(); refreshSidebar(); await navigate(status.configured?(selectedCard?"inbox":"chat"):"settings");
   if(status.configured) void loadInbox().catch(report);

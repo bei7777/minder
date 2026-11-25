@@ -13,6 +13,7 @@ const api: MinderDesktop = {
   cancel: () => invoke("cancel"),
   newChat: () => invoke("newChat"),
   tasks: () => invoke("tasks"),
+  homeTasks: () => invoke("homeTasks"),
   createTask: input => invoke("createTask",input),
   updateTask: (id,update,revision) => invoke("updateTask",id,update,revision),
   completeTask: (id,revision) => invoke("completeTask",id,revision),
