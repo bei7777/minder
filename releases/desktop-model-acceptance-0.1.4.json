@@ -1,0 +1,18 @@
+{
+  "version": "0.1.4",
+  "artifact": "Minder-0.1.4-macos-arm64.dmg",
+  "sha256": "eee8883c1676b5f7263b03694225a938e0d44afaa8a1ac806bb02f464b2900d9",
+  "testedOn": "2026-11-25",
+  "provider": "dmxapi",
+  "model": "deepseek-flash-guan",
+  "electron": "45.5.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "verified": true,
+  "streamedChunks": 80,
+  "multiTurn": true,
+  "managedWrite": true,
+  "fileDiff": true,
+  "undoByteIdentical": true,
+  "cancel": true
+}

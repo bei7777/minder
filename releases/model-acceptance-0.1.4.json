@@ -1,0 +1,20 @@
+{
+  "version": "0.1.4",
+  "artifact": "minder-0.1.4.tar.gz",
+  "sha256": "a7a66294d77ae0356e0f94d869fed1f3bece6c9b77c352b260508731ab8a5eab",
+  "testedOn": "2026-11-25",
+  "provider": "dmxapi",
+  "model": "deepseek-flash-guan",
+  "node": "v25.4.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "tools": ["minder_memory_propose", "read", "write"],
+  "verifiedTarballs": 10,
+  "initVerified": true,
+  "verifyReadNonce": true,
+  "managedWrite": true,
+  "fileDiff": true,
+  "undoByteIdentical": true,
+  "pendingMemory": true,
+  "realModelRequests": 7
+}
