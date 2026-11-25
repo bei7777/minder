@@ -18,13 +18,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, host: Ubuntu, shell: bash }
-          - { os: macos-latest, host: macOS, shell: bash }
-          - { os: windows-latest, host: Windows, shell: bash }
-          - { os: windows-2025, host: WSL2, shell: 'wsl-bash {0}' }
+          - { os: ubuntu-latest, host: Ubuntu }
+          - { os: macos-latest, host: macOS }
+          - { os: windows-latest, host: Windows }
+          - { os: windows-2025, host: WSL2 }
     name: Install release on ${{ matrix.host }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
+    env:
+      MINDER_RELEASE_VERSION: ${{ inputs.version }}
+      MINDER_RELEASE_SHA256: ${{ inputs.sha256 }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,10 +43,13 @@ jobs:
           wsl-version: 2
           wsl-shell-user: root
           additional-packages: ca-certificates curl xz-utils
-      - name: Verify SHA-256, install the original lockfile and start offline
-        shell: ${{ matrix.shell }}
-        env:
-          MINDER_RELEASE_VERSION: ${{ inputs.version }}
-          MINDER_RELEASE_SHA256: ${{ inputs.sha256 }}
-          WSLENV: MINDER_RELEASE_VERSION:MINDER_RELEASE_SHA256
+      - name: Install archive and start offline
+        if: matrix.host != 'WSL2'
+        shell: bash
         run: bash tests/distribution/portable-release.sh ${{ matrix.host }}
+      - name: Install archive in WSL2 and start offline
+        if: matrix.host == 'WSL2'
+        shell: wsl-bash {0}
+        env:
+          WSLENV: MINDER_RELEASE_VERSION:MINDER_RELEASE_SHA256
+        run: bash tests/distribution/portable-release.sh WSL2
