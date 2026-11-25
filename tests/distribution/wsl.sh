@@ -41,6 +41,7 @@ pnpm --dir minder test
 pnpm --dir minder lab verify-release
 pnpm --dir minder lab test-hosts
 pnpm --dir minder lab test-kit
+node minder/tests/distribution/wsl-volumes.mjs "$work" "$windows_data"
 pnpm --dir minder lab test-upgrade releases/minder-0.1.3.tar.gz
 MINDER_LAB_DATA_PARENT="$windows_data" pnpm --dir minder lab test-upgrade releases/minder-0.1.3.tar.gz
 
