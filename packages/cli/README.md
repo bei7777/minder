@@ -6,6 +6,22 @@ Minder 是基于 Pi SDK 的本地个人助手，包含可撤销的文件修改�
 
 默认终端界面提供对话、File Diff、Undo、Memory Diff 和提醒规则。运行 `minder --help` 查看非交互命令。`minder verify` 用随机文件内容检查实际模型能否成功调用读取工具。离线配置可用 `minder init --root DIR --provider ollama --model MODEL --no-verify`，运行 `minder doctor --json` 查看已启用工具与验证状态。
 
+### 持续跟进委托
+
+在对话里告诉 Minder「帮我跟进论文投稿，下一步核对附件，周五下午三点提醒我」。明确给出要跟进的工作后，助手可以保存标题、备注、下一步、截止时间和跟进时间。重新打开会话后，仍可按标题查看进度、更改时间或标记完成。委托保存在 `MINDER_HOME/tasks/tasks.sqlite`，按资料目录分别管理。
+
+```sh
+minder tasks add "论文投稿" --next-step "核对附件" --follow-up "2027-01-15T15:00:00+08:00"
+minder tasks list --status open
+minder tasks update ID --follow-up "2027-01-18T10:00:00+08:00"
+minder tasks show ID
+minder tasks complete ID
+```
+
+将 `ID` 替换为列表返回的委托标识。时间使用含时区的 ISO 时间，`--due` 设置截止时间，`--follow-up none` 取消跟进时间。多人同时操作同一份本地数据时，可将查到的 `--revision N` 传给更新或完成命令，防止覆盖其他进程已经保存的修改。
+
+`minder watch` 运行期间会检查委托时间。关闭所有监听进程后，委托仍保留在本机；再次启动监听或执行 `minder inbox` 时会补查到期事项。每个时间点只生成一次提醒，投递遵循收件箱的免打扰和冷却规则。`minder tasks check` 检查当前资料目录并列出可以处理的委托卡片。接受行动草稿会将查看进度的请求交给用户处理，委托的完成需要单独确认。
+
 ### 使用 Pi 供应商配置
 
 已有 Pi `models.json` 格式的供应商配置时，指定外部文件、其中的供应商标识和模型标识。文件保存在资料目录外，使用普通文件，并保持该文件与其引用路径可用。

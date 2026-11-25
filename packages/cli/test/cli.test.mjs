@@ -60,7 +60,9 @@ test("Pi 外部服务配置保留文件引用并隔离模型可读取的资料�
   const config=JSON.parse(await readFile(configPath,"utf8"));
   assert.equal(config.providerFile,file);
   assert.deepEqual(Object.keys(config).sort(),["inbox","model","provider","providerFile","root","verified","version"]);
-  assert.equal(JSON.parse((await command("doctor","--json")).stdout).tools.length,8);
+  const tools=JSON.parse((await command("doctor","--json")).stdout).tools;
+  for(const name of ["minder_list_files","minder_task_list","minder_task_create","minder_task_update","minder_task_complete"])
+    assert.ok(tools.includes(name),name);
   const visibleFile=join(documents,"providers.json");
   await link(file,visibleFile);
   await assert.rejects(command("doctor","--json"),/资料目录外/);

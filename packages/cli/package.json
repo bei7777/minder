@@ -1,6 +1,6 @@
 {
   "name": "@minder/cli",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "repository": {"type":"git","url":"git+https://github.com/bei7777/minder.git","directory":"packages/cli"},
   "homepage": "https://github.com/bei7777/minder#readme",
   "description": "A personal agent with recoverable file operations, editable memory and a quiet local inbox",
@@ -17,9 +17,10 @@
     "@inquirer/prompts": "7.10.1",
     "@minder/core-firewall": "0.1.4",
     "@minder/core-memory": "0.1.4",
-    "@minder/core-snapshot": "0.1.4",
+    "@minder/core-snapshot": "0.2.0",
     "pi-minder-firewall": "0.1.4",
     "pi-minder-memory": "0.1.4",
-    "pi-minder-snapshot": "0.1.4"
+    "pi-minder-snapshot": "0.2.0",
+    "typebox": "1.3.27"
   }
 }

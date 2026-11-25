@@ -3,9 +3,11 @@ import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { Firewall, scoreWithOllama, syncFeed, watchDirectory, type SourceEvent } from "@minder/core-firewall";
 import { home, type Config } from "./config.js";
+import { TaskStore } from "./tasks.js";
 
 export async function watch(config: Config, feeds: string[], once: boolean, model?: string) {
   const db=new Firewall(join(home,"firewall"));
+  const tasks=new TaskStore(home,config.root);
   const owner=randomUUID();
   const abort=new AbortController();
   let failure: Error | undefined;
@@ -26,6 +28,7 @@ export async function watch(config: Config, feeds: string[], once: boolean, mode
     do {
       if(abort.signal.aborted) break;
       for(const feed of feeds) await syncFeed(db,feed,scorer);
+      tasks.dispatchDue(db);
       const ready=db.dispatchDue();
       if(ready.length) console.log(JSON.stringify({inbox:ready.map(e=>e.id)}));
       if(!once) await wait(30000,undefined,{signal:abort.signal}).catch(error=>{
@@ -36,6 +39,6 @@ export async function watch(config: Config, feeds: string[], once: boolean, mode
   } finally {
     clearInterval(timer);
     process.off("SIGINT",stop); process.off("SIGTERM",stop);
-    try { await stopDirectory?.(); } finally { db.release(owner); db.close(); }
+    try { await stopDirectory?.(); } finally { db.release(owner); db.close(); tasks.close(); }
   }
 }

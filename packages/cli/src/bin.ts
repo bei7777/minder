@@ -9,6 +9,7 @@ import { Firewall, type Score } from "@minder/core-firewall";
 import { atomicJSON, configuration, home, installed, setup, type Config } from "./config.js";
 import { chat, openSession, verify } from "./session.js";
 import { watch } from "./watch.js";
+import { TaskStore, type TaskUpdate } from "./tasks.js";
 
 const version = createRequire(import.meta.url)("../package.json").version as string;
 
@@ -19,6 +20,10 @@ minder init                   配置模型、资料目录并验证工具调用
   --root DIR --provider ollama|deepseek --model ID [--no-verify]
   --root DIR --provider-file FILE --provider ID --model ID [--no-verify]
 minder chat | ask TEXT        打开会话或提交一条请求
+minder tasks list [--status open|completed] | show ID
+minder tasks add TITLE [--next-step TEXT] [--notes TEXT] [--due TIME] [--follow-up TIME]
+minder tasks update ID [--revision N] [--title TEXT] [--next-step TEXT] [--notes TEXT] [--due TIME|none] [--follow-up TIME|none]
+minder tasks complete ID [--revision N] | check
 minder files [ID] | undo ID   查看文件差异、撤销事务
 minder memory pending | search TEXT | diff SESSION | commit SESSION [KEY] | discard SESSION [KEY] | history | show ID | revert ID
 minder inbox | accept ID REV  查看行动卡，接受草稿并记录回执
@@ -47,11 +52,34 @@ async function files(config:Config,id?:string,undo=false) {
 async function workbench(config:Config) {
   for(;;) {
     const action=await select({message:"Minder",choices:[
-      {value:"chat",name:"对话"},{value:"files",name:"文件差异与撤销"},{value:"memory",name:"审阅记忆"},
+      {value:"chat",name:"对话"},{value:"tasks",name:"跟进委托"},{value:"files",name:"文件差异与撤销"},{value:"memory",name:"审阅记忆"},
       {value:"inbox",name:"行动收件箱"},{value:"rules",name:"提醒规则"},{value:"quit",name:"退出"}
     ]});
     if(action==="quit") return;
     if(action==="chat") { await chat(config); continue; }
+    if(action==="tasks") {
+      const tasks=new TaskStore(home,config.root);
+      try {
+        const task=await select({message:"选择委托",choices:[
+          ...tasks.list("open").map(t=>({name:safe(t.title)+(t.nextStep?" · "+safe(t.nextStep):""),value:t.id})),
+          {name:"创建委托",value:"new"},{name:"返回",value:"back"}]});
+        if(task==="back") continue;
+        if(task==="new") {
+          const title=await input({message:"委托名称"}), nextStep=await input({message:"下一步"});
+          const followUpAt=await input({message:"下次跟进时间（含时区的 ISO 时间，可留空）"});
+          output(tasks.create({title,nextStep,followUpAt:followUpAt||null}));
+        } else {
+          const row=tasks.get(task);output(row);
+          const action=await select({message:"操作",choices:["返回","修改跟进时间","标记完成"]});
+          if(action==="标记完成") output(tasks.complete(row.id,row.revision));
+          else if(action==="修改跟进时间") {
+            const time=await input({message:"下次跟进时间（含时区的 ISO 时间，留空可取消）"});
+            output(tasks.update(row.id,{followUpAt:time||null},row.revision));
+          }
+        }
+      } finally {tasks.close();}
+      continue;
+    }
     if(action==="files") {
       const store=await openSnapshot({stateDir:join(home,"snapshot"),roots:[config.root]});
       try {
@@ -85,6 +113,7 @@ async function workbench(config:Config) {
       continue;
     }
     const db=new Firewall(join(home,"firewall"));
+    const tasks=new TaskStore(home,config.root);
     try {
       if(action==="rules") {
         output(db.settings());
@@ -92,24 +121,26 @@ async function workbench(config:Config) {
         const score=await select<Score>({message:"优先级",choices:[1,2,3,4,5].map(n=>({value:n as Score,name:String(n)}))});
         output(db.configure({rules:[...db.settings().rules.filter(r=>r.sourceId!==sourceId),{sourceId,score}]}));
       } else {
-        db.dispatchDue();
-        const groups=db.inbox();
+        const groups=tasks.inbox(db);
         if(!groups.length) { output("目前没有需要处理的提醒"); continue; }
         const group=await select({message:"选择提醒",choices:groups.map(g=>({value:g,name:safe(g.title)+" · "+g.events.length}))});
         const item=group.events.length===1?group.events[0]:await select({message:"选择汇总事项",choices:group.events.map(e=>({name:safe(e.title),value:e}))});
         output(item.title+"\n"+item.summary);
         const draft=item.draftPreviewOnly ? db.get(item.id).action?.text : item.action.text;
         output("草稿\n"+required(draft,"草稿内容"));
-        if(await confirm({message:safe(item.action?.label ?? "接受本地草稿")+"？",default:false})) output(db.accept(item.id,item.revision));
+        if(await confirm({message:safe(item.action?.label ?? "接受本地草稿")+"？",default:false})) {
+          output(tasks.accept(db,item.id,item.revision));
+        }
       }
-    } finally { db.close(); }
+    } finally { tasks.close(); db.close(); }
   }
 }
 async function main() {
   const {positionals:args,values}=parseArgs({allowPositionals:true,options:{
     help:{type:"boolean",short:"h"},json:{type:"boolean"},root:{type:"string"},model:{type:"string"},
     provider:{type:"string"},"provider-file":{type:"string"},"no-verify":{type:"boolean"},once:{type:"boolean"},feed:{type:"string",multiple:true},
-    "score-model":{type:"string"}
+    "score-model":{type:"string"},title:{type:"string"},notes:{type:"string"},"next-step":{type:"string"},
+    due:{type:"string"},"follow-up":{type:"string"},revision:{type:"string"},status:{type:"string"}
   }});
   const command=args[0];
   const tty=Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -139,6 +170,36 @@ async function main() {
     }
     case "files": output(await files(cfg,args[1])); return;
     case "undo": output(await files(cfg,args[1],true)); return;
+    case "tasks": {
+      const tasks=new TaskStore(home,cfg.root);
+      try {
+        const changes:TaskUpdate={};
+        if(values.title!==undefined) changes.title=values.title;
+        if(values.notes!==undefined) changes.notes=values.notes;
+        if(values["next-step"]!==undefined) changes.nextStep=values["next-step"];
+        if(values.due!==undefined) changes.dueAt=values.due==="none"?null:values.due;
+        if(values["follow-up"]!==undefined) changes.followUpAt=values["follow-up"]==="none"?null:values["follow-up"];
+        switch(args[1]??"list") {
+          case "add": output(tasks.create({...changes,title:required(args.slice(2).join(" "),"委托名称")}));break;
+          case "list":
+            if(values.status!==undefined && values.status!=="open" && values.status!=="completed") throw new Error("未知委托状态");
+            output(tasks.list(values.status));break;
+          case "show": output(tasks.get(required(args[2],"委托 ID")));break;
+          case "update": case "complete": {
+            const id=required(args[2],"委托 ID");
+            const revision=values.revision===undefined?tasks.get(id).revision:Number(values.revision);
+            output(args[1]==="update"?tasks.update(id,changes,revision):tasks.complete(id,revision));break;
+          }
+          case "check": {
+            const firewall=new Firewall(join(home,"firewall"));
+            try {output(tasks.inbox(firewall).flatMap(group=>group.events).filter(card=>card.sourceId===tasks.sourceId));}
+            finally {firewall.close();}break;
+          }
+          default: throw new Error("未知的委托命令，请运行 minder --help");
+        }
+      } finally {tasks.close();}
+      return;
+    }
     case "watch": return watch(cfg,values.feed ?? [],Boolean(values.once),values["score-model"]);
     case "permissions":
       output({workspace:cfg.root,state:home,modelProvider:cfg.provider,model:cfg.model,
@@ -166,8 +227,11 @@ async function main() {
       const db=new Firewall(join(home,"firewall"));
       try {
         if(command==="audit") output(args[1]?db.explain(args[1]):db.list().map(e=>({id:e.id,source:e.sourceId,title:e.title,score:e.score,status:e.status,reason:e.reason})));
-        else if(command==="inbox") {db.dispatchDue();output(db.inbox());}
-        else if(command==="accept") output(db.accept(required(args[1],"卡片标识"),required(args[2],"修订标识")));
+        else if(command==="inbox" || command==="accept") {
+          const tasks=new TaskStore(home,cfg.root);
+          try {output(command==="inbox"?tasks.inbox(db):tasks.accept(db,required(args[1],"卡片标识"),required(args[2],"修订标识")));}
+          finally {tasks.close();}
+        }
         else if(args[1]==="quiet") output(db.configure({quietStart:required(args[2],"开始时间"),quietEnd:required(args[3],"结束时间"),timezone:required(args[4],"时区")}));
         else if(args[1]==="source") {
           const sourceId=required(args[2],"来源");
