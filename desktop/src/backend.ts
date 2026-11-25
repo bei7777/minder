@@ -3,12 +3,15 @@ import { basename, join } from "node:path";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { Worker } from "node:worker_threads";
 import {
-  Firewall, MemoryStore, atomicJSON, configuration, home, installed, openSession,
-  openSnapshot, setup, verify as verifyProvider, type Config,
+  Firewall, MemoryStore, TaskStore, atomicJSON, configuration, home, installed, openSession,
+  openSnapshot, setup, verify as verifyProvider, type Config, type TaskInput, type TaskUpdate,
 } from "@minder/cli/desktop";
 import type { DesktopEvent, DesktopSettings, DesktopStatus, MinderDesktop, ProviderChoice, Rules } from "./contracts.js";
 
 export interface DesktopHost {
+  versions:DesktopStatus["versions"];
+  nativeNotifications:boolean;
+  notifyTask(id:string,title:string,summary:string):void;
   openLink(url: string): Promise<void>;
   workspace(): Promise<string | null>;
   providerFile(): Promise<string | null>;
@@ -17,7 +20,7 @@ export interface DesktopHost {
   report(message:string): void;
 }
 
-const emptyStatus: DesktopStatus = {configured:false,root:"",provider:"",model:"",verified:false,external:false,busy:false};
+const emptyStatus = {configured:false,root:"",provider:"",model:"",verified:false,external:false,busy:false};
 function text(value:unknown, title:string, limit=4096): string {
   if(typeof value!=="string" || !value.trim() || value.length>limit || value.includes("\0"))
     throw new Error(title+"无效");
@@ -82,7 +85,7 @@ export class DesktopBackend implements Omit<MinderDesktop,"onEvent"> {
     finally {this.changing=undefined;this.host.emit({type:"changed"});}
   }
   private statusFor(cfg:Config): DesktopStatus {
-    return {configured:true,root:cfg.root,provider:cfg.provider,model:cfg.model,verified:cfg.verified,
+    return {versions:this.host.versions,configured:true,root:cfg.root,provider:cfg.provider,model:cfg.model,verified:cfg.verified,
       external:!!cfg.providerFile,busy:!!this.task};
   }
   private async saved(): Promise<{config?:Config; issue?:string}> {
@@ -99,7 +102,7 @@ export class DesktopBackend implements Omit<MinderDesktop,"onEvent"> {
   }
   async status():Promise<DesktopStatus> {
     const {config:cfg,issue}=await this.saved();
-    if(!cfg) return {...emptyStatus,configurationIssue:issue};
+    if(!cfg) return {...emptyStatus,versions:this.host.versions,configurationIssue:issue};
     if(!this.closed && this.monitor?.root!==cfg.root) {
       this.updateMonitor(cfg.root);
     }
@@ -214,6 +217,20 @@ export class DesktopBackend implements Omit<MinderDesktop,"onEvent"> {
   }
   async newChat(){await this.change(()=>this.disposeSession());}
 
+  private async withTasks<T>(work:(store:TaskStore)=>T) {
+    const cfg=await configuration();
+    const store=new TaskStore(home,cfg.root);
+    try {return work(store);} finally {store.close();}
+  }
+  tasks(){return this.withTasks(store=>store.list());}
+  createTask(input:TaskInput){return this.change(()=>this.withTasks(store=>store.create(input)));}
+  updateTask(id:string,input:TaskUpdate,revision:number) {
+    return this.change(()=>this.withTasks(store=>store.update(text(id,"委托标识",128),input,number(revision))));
+  }
+  completeTask(id:string,revision:number) {
+    return this.change(()=>this.withTasks(store=>store.complete(text(id,"委托标识",128),number(revision))));
+  }
+
   private async withFiles<T>(work:(manager:Awaited<ReturnType<typeof openSnapshot>>)=>Promise<T>) {
     const cfg=await configuration();
     const manager=await openSnapshot({stateDir:join(home,"snapshot"),roots:[cfg.root]});
@@ -238,8 +255,14 @@ export class DesktopBackend implements Omit<MinderDesktop,"onEvent"> {
     const db=new Firewall(join(home,"firewall"));
     try{return work(db);}finally{db.close();}
   }
-  inbox(){return this.withFirewall(db=>{db.dispatchDue();return db.inbox();});}
-  accept(id:string,revision:string){return this.change(()=>this.withFirewall(db=>db.accept(text(id,"提醒标识"),text(revision,"修订标识"))));}
+  inbox(){return this.withTasks(store=>{
+    const db=new Firewall(join(home,"firewall"));
+    try {return store.inbox(db);} finally {db.close();}
+  });}
+  accept(id:string,revision:string){return this.change(()=>this.withTasks(store=>{
+    const db=new Firewall(join(home,"firewall"));
+    try {return store.accept(db,text(id,"提醒标识"),text(revision,"修订标识"));} finally {db.close();}
+  }));}
   rules(){return this.withFirewall(db=>db.settings());}
   saveRules(value:Rules){return this.change(()=>this.withFirewall(db=>db.configure(validateRules(value))));}
 
@@ -250,12 +273,16 @@ export class DesktopBackend implements Omit<MinderDesktop,"onEvent"> {
       this.monitor=undefined;
       await previous?.close();
       const owner=randomUUID(), stateDir=join(home,"firewall");
-      const worker=new Worker(new URL("./monitor.js",import.meta.url),{workerData:{root,owner,stateDir}});
+      const worker=new Worker(new URL("./monitor.js",import.meta.url),{workerData:{
+        root,owner,stateDir,nativeNotifications:this.host.nativeNotifications,
+      }});
       const exited=new Promise<number>(resolve=>worker.once("exit",resolve));
       worker.on("error",()=>this.host.report("目录监听工作线程已停止"));
       worker.on("message",message=>{
-        if(message==="changed") this.host.emit({type:"changed"});
+        if(message==="changed") this.host.emit({type:"inbox-changed"});
         if(message==="error") this.host.report("目录监听失败，请检查资料目录");
+        if(message?.type==="task-notice" && !this.closed && this.monitor?.root===root)
+          this.host.notifyTask(message.id,message.title,message.summary);
       });
       this.monitor={root,close:async()=>{
         worker.postMessage("close");

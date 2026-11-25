@@ -10,10 +10,9 @@ import { _electron as electron } from "playwright-core";
 
 const execute = promisify(execFile);
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const [bundle, scenario] = process.argv.slice(2);
+const [bundle, scenario, previousBundle] = process.argv.slice(2);
 assert.ok(bundle && ["existing", "first-run"].includes(scenario), "Pass Minder.app and existing or first-run");
 const contents = resolve(bundle, "Contents");
-const cli = join(contents, "Resources", "app", "node_modules", "@minder", "cli");
 const parent = join(repo, ".minder-dev", "desktop-setup");
 await mkdir(parent, {recursive:true});
 const area = await mkdtemp(join(parent, "run-"));
@@ -26,6 +25,10 @@ const providerFile = await realpath(process.env.MINDER_TEST_PROVIDER_FILE ?? joi
 const providers = JSON.parse(await readFile(providerFile,"utf8")).providers;
 const model = providers.dmxapi.models[0].id;
 if(scenario==="existing") {
+  assert.ok(previousBundle,"Pass the previous Minder 0.1.5 app as the third argument");
+  const oldApp=resolve(previousBundle,"Contents","Resources","app");
+  assert.equal(JSON.parse(await readFile(join(oldApp,"package.json"),"utf8")).version,"0.1.5");
+  const cli=join(oldApp,"node_modules","@minder","cli");
   assert.equal(JSON.parse(await readFile(join(cli,"package.json"),"utf8")).version,"0.1.4");
   await execute(process.execPath,[join(cli,"lib","bin.js"),"init","--root",root,"--provider-file",providerFile,
     "--provider","dmxapi","--model",model,"--no-verify"],{env,cwd:root});
@@ -100,7 +103,7 @@ try {
       assert.ok(completedDuringIndexing>=1,"Main-process IPC should respond during SQLite indexing");
       assert.ok(slowest<1500,"IPC response took "+Math.round(slowest)+" ms");
     } finally {db.close();}
-    console.log(JSON.stringify({existing014SaveToChat:true,preservedDraft:true,preservedConfig:true,
+    console.log(JSON.stringify({previousDesktop:"0.1.5",previousCli:"0.1.4",existingConfigSaveToChat:true,preservedDraft:true,preservedConfig:true,
       indexedFiles:4000,ipcResponsesDuringIndexing:completedDuringIndexing,slowestIpcMs:Math.round(slowest)}));
   }
 } finally {await app.close();}

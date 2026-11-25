@@ -1,7 +1,8 @@
-import type { ActionCard, FileDiff, MemoryChange, Rules, SnapshotRecord } from "@minder/cli/desktop";
-export type { ActionCard, FileDiff, MemoryChange, Rules, SnapshotRecord };
+import type { ActionCard, FileDiff, MemoryChange, Rules, SnapshotRecord, Task, TaskInput, TaskUpdate } from "@minder/cli/desktop";
+export type { ActionCard, FileDiff, MemoryChange, Rules, SnapshotRecord, Task, TaskInput, TaskUpdate };
 
 export interface DesktopStatus {
+  versions:{desktop:string;cli:string;packaged:boolean};
   configured: boolean;
   root: string;
   provider: string;
@@ -29,6 +30,8 @@ export interface DesktopSettings {
 export type DesktopEvent =
   | {type: "delta"; text: string}
   | {type: "tool"; id: string; name: string; phase: "start" | "end"; failed?: boolean}
+  | {type: "inbox-changed"}
+  | {type: "open-inbox"; id: string}
   | {type: "changed"};
 
 export interface MinderDesktop {
@@ -41,6 +44,10 @@ export interface MinderDesktop {
   send(text: string): Promise<void>;
   cancel(): Promise<void>;
   newChat(): Promise<void>;
+  tasks(): Promise<Task[]>;
+  createTask(input:TaskInput): Promise<Task>;
+  updateTask(id:string, update:TaskUpdate, revision:number): Promise<Task>;
+  completeTask(id:string, revision:number): Promise<Task>;
   files(): Promise<SnapshotRecord[]>;
   diff(id: string): Promise<FileDiff>;
   undo(id: string): Promise<FileDiff>;

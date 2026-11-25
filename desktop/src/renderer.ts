@@ -1,9 +1,9 @@
-import type { DesktopStatus, MemoryChange, ProviderChoice, Rules } from "./contracts.js";
+import type { DesktopStatus, MemoryChange, ProviderChoice, Rules, Task, TaskInput } from "./contracts.js";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 
 const api = window.minder;
-const pages = {chat:"对话",files:"文件记录",memory:"记忆审阅",inbox:"提醒",settings:"设置"};
+const pages = {chat:"对话",files:"文件记录",memory:"记忆审阅",inbox:"提醒",settings:"设置",tasks:"委托"};
 type Page = keyof typeof pages;
 type Part = {kind:"text"; text:string} | {kind:"tool"; id:string; name:string; state:"运行中"|"完成"|"失败"};
 type Turn = {role:"user"; text:string} | {role:"assistant"; parts:Part[]};
@@ -87,6 +87,7 @@ async function navigate(target:Page) {
   if(target==="chat") renderChat();
   if(target==="files") await renderFiles(current);
   if(target==="memory") await renderMemory(current);
+  if(target==="tasks") await renderTasks(current);
   if(target==="inbox") await renderInbox(current);
   if(target==="settings") await renderSettings(current);
 }
@@ -195,7 +196,7 @@ function patch(text:string) {
   for(const line of text.split("\n")) block.append(el("span",line,line.startsWith("+")&&!line.startsWith("+++")?"addition":line.startsWith("-")&&!line.startsWith("---")?"deletion":""));
   return block;
 }
-function listDetail<T>(items:T[], caption:(item:T)=>[string,string], render:(item:T,panel:HTMLElement)=>Promise<void>) {
+function listDetail<T>(items:T[], caption:(item:T)=>[string,string], render:(item:T,panel:HTMLElement)=>Promise<void>|void, preferred?:(item:T)=>boolean) {
   const layout=stack("review-layout"), list=stack("records"), detail=stack("sheet");
   layout.append(list,detail); view.append(layout);
   async function select(item:T, b:HTMLButtonElement) {
@@ -205,13 +206,112 @@ function listDetail<T>(items:T[], caption:(item:T)=>[string,string], render:(ite
     try { await render(item,panel); if(request===nextDetail && detail.isConnected) detail.replaceChildren(panel); }
     catch(err) { if(request===nextDetail) report(err); }
   }
+  const initial=preferred ? items.find(preferred) ?? items[0] : items[0];
   for(const item of items) {
     const [heading,meta]=caption(item), b=button("",()=>select(item,b)); b.className="record";
     b.append(el("strong",heading),el("small",meta)); list.append(b);
-    if(list.childElementCount===1) void select(item,b);
+    if(item===initial) void select(item,b);
   }
 }
 function refreshButton() { actions.append(button("刷新",()=>navigate(page))); }
+
+let taskFilter:Task["status"]="open", selectedTask="";
+async function composeFollowUp(text:string) {
+  draft=draft.trim()?draft+"\n\n"+text:text;
+  await navigate("chat");byId("prompt").focus();
+}
+function taskDate(value:string|null) {
+  const input=el("input");input.type="datetime-local";input.step="any";
+  if(value) {
+    const date=new Date(value);
+    input.value=new Date(date.getTime()-date.getTimezoneOffset()*60_000).toISOString().slice(0,-1);
+  }
+  const original=input.value;
+  function iso():string|null {
+    if(!input.value) return null;
+    if(input.value===original && value) return value;
+    const date=new Date(input.value);
+    if(!Number.isFinite(date.getTime()) || date.getTime()-date.getTimezoneOffset()*60_000!==input.valueAsNumber)
+      throw new Error("请选择所在时区有效的日期和时间");
+    return date.toISOString();
+  }
+  return {input,iso};
+}
+function taskEditor(task?:Task) {
+  const dialog=el("dialog","","task-editor"), form=el("form","","stack");
+  const heading=el("h2",task?"编辑委托":"新建委托");heading.id="task-editor-title";
+  dialog.setAttribute("aria-labelledby",heading.id);
+  const title=el("input"), next=el("textarea"), notes=el("textarea");
+  title.required=true;title.maxLength=256;next.maxLength=2000;notes.maxLength=8000;
+  title.value=task?.title??"";next.value=task?.nextStep??"";notes.value=task?.notes??"";
+  next.rows=2;notes.rows=2;
+  const follow=taskDate(task?.followUpAt??null), due=taskDate(task?.dueAt??null);
+  const dates=stack("columns");dates.append(field("跟进时间",follow.input),field("截止时间",due.input));
+  const zone=Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const timing=el("p","以上时间使用 "+zone+"。","task-schedule-note");
+  const error=el("p","","task-form-error");error.setAttribute("role","alert");error.hidden=true;
+  const row=stack("action-row end"), submit=el("button",task?"保存更改":"创建委托","primary");submit.type="submit";
+  row.append(button("取消",()=>dialog.close()),submit);
+  form.append(heading,field("委托名称",title),field("下一步",next),dates,timing,field("备注",notes),error,row);
+  let saving=false;
+  form.addEventListener("submit",async event=>{
+    event.preventDefault();
+    if(saving) return;
+    saving=true;form.inert=true;form.setAttribute("aria-busy","true");submit.textContent="正在保存…";
+    try {
+      const input:TaskInput={title:title.value.trim(),nextStep:next.value.trim(),notes:notes.value.trim(),
+        followUpAt:follow.iso(),dueAt:due.iso()};
+      const result=task ? await api.updateTask(task.id,input,task.revision) : await api.createTask(input);
+      selectedTask=result.id;taskFilter=result.status;dialog.close();
+      await navigate("tasks");inform(task?"委托已更新":"委托已创建");
+      void loadInbox().catch(report);
+    } catch(err) {
+      error.textContent=err instanceof Error?err.message:String(err);error.hidden=false;
+    } finally {saving=false;form.inert=false;form.removeAttribute("aria-busy");submit.textContent=task?"保存更改":"创建委托";}
+  });
+  dialog.addEventListener("cancel",event=>{if(saving)event.preventDefault();});
+  dialog.addEventListener("close",()=>dialog.remove(),{once:true});
+  dialog.append(form);document.body.append(dialog);dialog.showModal();title.focus();
+}
+async function renderTasks(current:()=>boolean) {
+  actions.append(button("新建委托",()=>taskEditor(),true));refreshButton();
+  const tasks=await api.tasks();if(!current()) return;
+  const filters=el("nav","","settings-tabs task-filters");filters.setAttribute("aria-label","委托状态");
+  for(const [key,label] of [["open","待跟进"],["completed","已完成"]] as const) {
+    const tab=button(label,()=>{taskFilter=key;return navigate("tasks");});
+    tab.setAttribute("aria-pressed",String(taskFilter===key));filters.append(tab);
+  }
+  view.append(filters,el("p","关闭窗口后，Minder 会继续检查委托。退出应用期间到期的委托，会在下次启动时进入提醒流程。","task-delivery-note"));
+  const visible=tasks.filter(task=>task.status===taskFilter);
+  if(!visible.length) {
+    view.append(taskFilter==="open"?blank("尚无待跟进的委托","可以创建委托，或在对话中告诉 Minder 需要跟进的事项和时间。"):
+      blank("尚无已完成的委托","你标记完成的事项会保存在这里。"));
+    return;
+  }
+  listDetail(visible,task=>[task.title,task.status==="completed"?"已完成":
+    task.followUpAt?"跟进 · "+localTime(task.followUpAt):task.dueAt?"截止 · "+localTime(task.dueAt):"尚未安排时间"],(task,panel)=>{
+    selectedTask=task.id;
+    panel.append(el("h2",task.title,"record-title"));
+    if(task.nextStep) panel.append(el("h3","下一步"),el("p",task.nextStep,"body-text"));
+    const facts=el("dl","","task-facts");
+    for(const [label,value] of [["跟进时间",task.followUpAt],["截止时间",task.dueAt]] as const) {
+      facts.append(el("dt",label),el("dd",value?localTime(value):"未设置"));
+    }
+    panel.append(facts);
+    if(task.notes) panel.append(el("h3","备注"),el("p",task.notes,"body-text"));
+    if(task.status==="completed") return;
+    const controls=stack("action-row");
+    controls.append(button("编辑委托",()=>taskEditor(task)),button("带入对话",async()=>{
+      const context=["请继续跟进这项委托。",task.title,task.nextStep && "下一步："+task.nextStep,
+        task.dueAt && "截止时间："+localTime(task.dueAt),task.notes, "委托编号："+task.id].filter(Boolean).join("\n");
+      await composeFollowUp(context);
+    }),button("标记完成",async()=>{
+      if(!await confirmAction("完成这项委托？",task.title,"确认完成")) return;
+      await api.completeTask(task.id,task.revision);taskFilter="completed";
+      await navigate("tasks");inform("委托已完成");void loadInbox().catch(report);
+    },true));panel.append(controls);
+  },task=>task.id===selectedTask);
+}
 const transactionNames:Record<string,string>={committed:"已提交",undone:"已撤销",aborted:"已放弃",staging:"正在暂存",committing:"正在提交",undoing:"正在撤销"};
 async function renderFiles(current:()=>boolean) {
   refreshButton(); const rows=await api.files(); if(!current()) return;
@@ -248,18 +348,29 @@ async function renderMemory(current:()=>boolean) {
     }
   });
 }
+let selectedCard="", inboxRequest=0;
+async function loadInbox() {
+  const request=++inboxRequest;
+  const groups=await api.inbox();
+  if(request===inboxRequest) {
+    const count=groups.reduce((total,group)=>total+group.events.length,0), badge=byId("inbox-count");
+    badge.hidden=count===0;badge.textContent=String(count);badge.title=count+" 个待处理提醒";
+  }
+  return groups;
+}
 async function renderInbox(current:()=>boolean) {
-  refreshButton(); const groups=await api.inbox(); if(!current()) return;
+  refreshButton(); const groups=await loadInbox(); if(!current()) return;
   const records=groups.flatMap(g=>g.events.map(card=>({group:g.title,card})));
   if(!records.length){view.append(blank("目前没有需要处理的提醒","达到提醒条件的目录事件和订阅会出现在这里。"));return;}
   listDetail(records,r=>[r.card.title,r.card.score+" 分 · "+r.group],async({card},panel)=>{
+    selectedCard=card.id;
     panel.append(el("h2",card.title),el("p",card.summary,"body-text"),el("div",card.sourceId,"readout"),
       el("h3",card.action.label),el("p",card.action.text,"body-text"));
     panel.append(button("接受草稿",async()=>{
       const receipt=await api.accept(card.id,card.revision);
-      draft=receipt.text; inform("草稿已放入对话输入框，请审阅后发送。"); await navigate("chat");
+      await composeFollowUp(receipt.text);inform("草稿已放入对话输入框，请审阅后发送。");await loadInbox();
     },true));
-  });
+  },r=>r.card.id===selectedCard);
 }
 
 function rulesEditor(rules:Rules) {
@@ -313,10 +424,11 @@ function connectionSettings(current:()=>boolean) {
     try {
       const result=await api.configure({root,provider,model,external:method.value==="external",
         ...(method.value==="external" && selection?{providerSelectionId:selection.selectionId}:{})});
-      if(result.changedConnection) {turns.length=0;activeTurn=undefined;draft="";}
+      if(result.changedConnection) {turns.length=0;activeTurn=undefined;draft="";selectedTask="";selectedCard="";taskFilter="open";}
       status=result;refreshSidebar();
       if(current()) {
         await navigate("chat");byId("prompt").focus();inform("设置已保存，可以开始对话");
+        void loadInbox().catch(report);
       }
     } finally {saving=false;}
   },true,"正在保存…");
@@ -384,6 +496,8 @@ function capabilities() {
     row.append(label,button("打开"+pages[target],()=>navigate(target)));section.append(row);
   }
   section.append(el("p","DSH 插件提供相同的三项能力，供 DeepSeek Harness 独立安装。","readout"));
+  const {desktop,cli,packaged}=status.versions;
+  section.append(el("p","桌面版 "+desktop+(packaged?"":"（开发环境）")+" · CLI "+cli,"readout"));
   return section;
 }
 async function renderSettings(current:()=>boolean) {
@@ -415,11 +529,12 @@ for(const b of document.querySelectorAll<HTMLButtonElement>("[data-page]")) {
 }
 window.addEventListener("keydown",e=>{
   if(e.isComposing || !status) return;
+  if(document.querySelector("dialog[open]")) return;
   if(e.key==="Escape" && page==="settings" && status.configured && !document.querySelector("dialog[open]")) {
     e.preventDefault();void navigate(previousPage).catch(report);return;
   }
   if(e.metaKey && e.key===",") {e.preventDefault();void navigate("settings").catch(report);return;}
-  if(!e.metaKey || e.altKey || !/^[1-5]$/.test(e.key)) return;
+  if(!e.metaKey || e.altKey || !/^[1-6]$/.test(e.key)) return;
   e.preventDefault();void navigate((Object.keys(pages) as Page[])[Number(e.key)-1]!).catch(report);
 });
 const toggle=byId<HTMLButtonElement>("sidebar-toggle");
@@ -434,7 +549,13 @@ toggle.addEventListener("click",()=>{
   setSidebar(collapsed);localStorage.setItem("minder:sidebar",collapsed?"collapsed":"open");
 });
 const unsubscribe=api.onEvent(event=>{
-  if(event.type==="delta" && activeTurn && event.text) {
+  if(event.type==="open-inbox") {
+    selectedCard=event.id;
+    if(status?.configured) void navigate("inbox").catch(report);
+  } else if(event.type==="inbox-changed" && status?.configured) {
+    if(page==="inbox") void navigate("inbox").catch(report);
+    else void loadInbox().catch(report);
+  } else if(event.type==="delta" && activeTurn && event.text) {
     const tail=activeTurn.parts.at(-1);
     if(tail?.kind==="text") tail.text+=event.text;
     else activeTurn.parts.push({kind:"text",text:event.text});
@@ -450,7 +571,8 @@ const unsubscribe=api.onEvent(event=>{
 });
 window.addEventListener("pagehide",unsubscribe,{once:true});
 async function start() {
-  status=await api.status(); refreshSidebar(); await navigate(status.configured?"chat":"settings");
+  status=await api.status(); refreshSidebar(); await navigate(status.configured?(selectedCard?"inbox":"chat"):"settings");
+  if(status.configured) void loadInbox().catch(report);
   if(status.configurationIssue) inform(status.configurationIssue,true);
 }
 void start().catch(report);

@@ -1,5 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Notification, session, shell } from "electron";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
 import { DesktopBackend } from "./backend.js";
 import type { MinderAPI } from "./contracts.js";
 
@@ -11,12 +12,34 @@ const endpoints: Record<Method, number> = {
   status: 0, chooseWorkspace: 0, chooseProvider: 0, configure: 1, verify: 0,
   openWebLink: 1,
   send: 1, cancel: 0, newChat: 0, files: 0, diff: 1, undo: 1, pending: 0,
+  tasks: 0, createTask: 1, updateTask: 3, completeTask: 2,
   memoryDiff: 1, review: 3, inbox: 0, accept: 2, rules: 0, saveRules: 1,
 };
 
 let win: BrowserWindow | undefined;
 let backend: DesktopBackend | undefined;
 let closing: Promise<void> | undefined;
+let quitting=false, loaded=false, pendingCard="";
+const noticePrefix="minder-task-";
+const notices=new Map<string,Notification>();
+
+function showWindow() {
+  if(!win || quitting) return;
+  if(win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+function openCard(id:string) {
+  showWindow();
+  if(loaded && win) win.webContents.send("minder:event",{type:"open-inbox",id});
+  else pendingCard=id;
+}
+function bindNotice(id:string,notice:Notification) {
+  notices.set(id,notice);
+  notice.once("click",()=>{notices.delete(id);openCard(id);});
+  notice.once("close",()=>notices.delete(id));
+  notice.once("failed",()=>notices.delete(id));
+}
 function currentWindow(): BrowserWindow {
   if (!win || win.isDestroyed()) throw new Error("请打开 Minder 窗口");
   return win;
@@ -54,8 +77,18 @@ async function start() {
   window.webContents.on("will-navigate", event => event.preventDefault());
   window.webContents.on("will-attach-webview", event => event.preventDefault());
   window.once("ready-to-show", () => window.show());
+  window.on("close",event=>{
+    if(process.platform==="darwin" && !quitting) {event.preventDefault();window.hide();}
+  });
   window.on("closed", () => { win = undefined; });
   const service = new DesktopBackend({
+    versions:{desktop:app.getVersion(),cli:createRequire(import.meta.url)("@minder/cli/package.json").version,packaged:app.isPackaged},
+    nativeNotifications:process.platform==="darwin" && Notification.isSupported(),
+    notifyTask(id,title,body) {
+      const notice=new Notification({id:noticePrefix+id,title,body,silent:true});
+      bindNotice(id,notice);
+      notice.show();
+    },
     openLink: url => shell.openExternal(url),
     async workspace() {
       const result = await dialog.showOpenDialog(currentWindow(), {
@@ -94,18 +127,31 @@ async function start() {
     });
   }
   await window.loadFile(entry);
+  loaded=true;
+  if(pendingCard) {openCard(pendingCard);pendingCard="";}
+  if(process.platform==="darwin" && Notification.isSupported()) {
+    void Notification.getHistory().then(history=>{
+      for(const notice of history) {
+        if(!notice.id.startsWith(noticePrefix)) continue;
+        const id=notice.id.slice(noticePrefix.length);
+        if(!notices.has(id)) bindNotice(id,notice);
+      }
+    }).catch(()=>console.error("无法读取 macOS 通知中心中的委托提醒"));
+  }
 }
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    if (win?.isMinimized()) win.restore();
-    win?.show();
-    win?.focus();
+  app.once("ready",(_event,launchInfo)=>{
+    const id=launchInfo?.identifier;
+    if(typeof id==="string" && id.startsWith(noticePrefix)) pendingCard=id.slice(noticePrefix.length);
   });
-  app.on("window-all-closed", () => app.quit());
+  app.on("second-instance",showWindow);
+  app.on("activate",showWindow);
+  app.on("window-all-closed", () => {if(process.platform!=="darwin") app.quit();});
   app.on("before-quit", event => {
+    quitting=true;
     if (!backend) return;
     event.preventDefault();
     closing ??= backend.close().finally(() => { backend = undefined; app.quit(); });

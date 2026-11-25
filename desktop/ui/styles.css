@@ -430,6 +430,16 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .record small { font-size: 11px; font-weight: 440; color: var(--quiet); }
 .review-layout > .sheet { min-width: 0; padding-left: clamp(13px, 2.4vw, 28px); border-left: 1px solid var(--line); }
 .review-layout .sheet .sheet + .sheet { border-top: 1px solid var(--line); padding-top: 19px; margin-top: 19px; }
+.task-filters { margin: 0 0 10px; }
+.task-delivery-note { margin: 0 0 20px; color: var(--quiet); font-size: 12px; }
+.task-facts { display: grid; grid-template-columns: max-content 1fr; gap: 7px 16px; font-size: 13px; }
+.task-facts dt, .task-schedule-note { color: var(--quiet); }
+.task-facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+dialog.task-editor { width: min(490px,90vw); max-height: 88dvh; overflow-y: auto; }
+.task-editor textarea { resize: vertical; }
+.task-editor .task-schedule-note { margin: 5px 0 0; font-size: 12px; }
+.task-form-error { color: var(--red); }
+#inbox-count { color: var(--green); font-size: 11px; font-weight: 650; }
 .patch {
   max-height: 47vh;
   overflow: auto;
