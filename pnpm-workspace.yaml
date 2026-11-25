@@ -1,0 +1,9 @@
+packages:
+  - packages/*
+overrides:
+  "@minder/core-firewall": link:../pi-minder/packages/core-firewall
+  "@minder/core-snapshot": link:../pi-minder/packages/core-snapshot
+  "@minder/core-memory": link:../pi-minder/packages/core-memory
+  pi-minder-snapshot: link:../pi-minder/packages/pi-minder-snapshot
+  pi-minder-memory: link:../pi-minder/packages/pi-minder-memory
+  pi-minder-firewall: link:../pi-minder/packages/pi-minder-firewall

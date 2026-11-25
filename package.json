@@ -1,0 +1,12 @@
+{
+  "name": "minder-distribution-workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.15.0",
+  "scripts": {
+    "lab": "node scripts/lab.mjs",
+    "build": "pnpm -r --if-present run build",
+    "test": "pnpm -r --if-present run test"
+  },
+  "devDependencies": {"@types/node": "22.19.0", "typescript": "5.9.3", "verdaccio": "6.2.4"}
+}
