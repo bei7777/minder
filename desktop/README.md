@@ -1,12 +1,14 @@
 # Minder for macOS
 
-[下载 Apple 芯片版 0.1.5](https://github.com/bei7777/minder/releases/download/desktop-v0.1.5/Minder-0.1.5-macos-arm64.dmg) · [安装与真实模型验收记录](../releases/desktop-0.1.5.md)
+[下载 Apple 芯片版 0.2.0](https://github.com/bei7777/minder/releases/download/v0.2.0/Minder-0.2.0-macos-arm64.dmg) · [安装与真实模型验收记录](../releases/0.2.0.md)
 
 在 Apple 芯片 Mac 上打开 DMG，将 Minder 拖进“应用程序”，然后在 Finder 中双击 Minder。应用内置 Electron、Node.js、SQLite FTS5、Pi 和三个 Minder 扩展。使用者只需在设置里选择资料目录和模型。供应商配置保存在本机，支持选择已有的 Pi 供应商 JSON，也可以连接本机 Ollama。
 
 在“设置 → 模型与目录”选择资料目录和模型，点击“保存设置”后可以直接输入任务。使用 Enter 发送，Shift + Enter 换行。再次保存同一连接会保留当前会话、输入草稿和模型验证结果。“验证模型连接”会要求模型实际读取一份临时验证文件。
 
-“设置 → 内置能力”可以查看三个扩展并打开对应的工作记录。
+打开“设置 → 内置能力”可以查看桌面版本、终端运行时版本和三个扩展。对话可以直接列出所选资料目录的文件。打开“委托”可查看助手登记的事项、修改下一步和跟进时间，或把一项委托带回对话。
+
+点击窗口左上角的红色关闭按钮后，Minder 会继续检查跟进时间。点击程序坞图标可恢复窗口。使用 Command-Q 完全退出后，下次打开时会检查期间到期的事项。提醒遵守免打扰时间，系统通知的显示取决于 macOS 的通知设置。
 
 | 能力 | 在 Minder 中的作用 |
 | --- | --- |
@@ -27,7 +29,7 @@ npm run package:mac
 npm run test:mac
 ```
 
-`package:mac` 默认读取仓库内的 `releases/minder-0.1.4.tar.gz`。桌面版 0.1.5 使用的运行时版本和归档 SHA-256 固定在 `desktop/package.json` 的 `minderRuntime` 字段中。构建器核对归档、CLI、三个核心包、三个 Pi 扩展及其锁文件，安装生产依赖后使用归档内的类型声明编译桌面代码，再用 esbuild 将前端编译为浏览器可执行的单个 ESM 文件。已有解压目录时，可以运行 `npm run package:mac -- /path/to/delivery`，构建器会把该目录与正式发行归档逐项比对。Electron ZIP 使用官方 npm 包附带的校验值。
+`package:mac` 默认读取仓库内的 `releases/minder-0.2.0.tar.gz`。运行时版本和归档 SHA-256 固定在 `desktop/package.json` 的 `minderRuntime` 字段中。构建器核对归档、CLI、三个核心包、三个 Pi 扩展及其锁文件，安装生产依赖后使用归档内的类型声明编译桌面代码，再用 esbuild 编译前端。已有解压目录时，可以运行 `npm run package:mac -- /path/to/delivery`，构建器会把该目录与正式发行归档逐项比对。Electron ZIP 使用官方 npm 包附带的校验值。
 
 构建成功后，`../.minder-dev/macos/latest.json` 记录相对于该目录的应用路径、DMG 路径、映像 SHA-256、签名方式和七个 npm 包的 SHA-512。每次构建拥有独立目录。macOS 验收会校验映像和完整应用签名，实际调用包内 SQLite FTS5，通过 Finder 使用的 Launch Services 启动应用，并在独立配置中操作设置页面。
 

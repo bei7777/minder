@@ -1,6 +1,6 @@
 {
   "name": "minder-desktop",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Minder for macOS",
@@ -8,8 +8,8 @@
   "main": "lib/main.js",
   "engines": { "node": ">=24.9.0" },
   "minderRuntime": {
-    "version": "0.1.4",
-    "archiveSha256": "a7a66294d77ae0356e0f94d869fed1f3bece6c9b77c352b260508731ab8a5eab"
+    "version": "0.2.0",
+    "archiveSha256": "ecbcbe758e39a3fd558059259f8d76db5b6367c1238e0ebf7bef609214fcb75f"
   },
   "scripts": {
     "build": "node scripts/build.mjs",

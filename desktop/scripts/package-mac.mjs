@@ -46,11 +46,12 @@ const dependencies = (await readJSON(join(kit,"package.json"))).dependencies;
 const runtime = release.packages.filter(pkg=>pkg.repo!=="dsh-plugin-minder");
 assert.equal(runtime.length,7);
 assert.deepEqual(Object.keys(dependencies).sort(),runtime.map(pkg=>pkg.name).sort());
+assert.equal(runtime.find(pkg=>pkg.name==="@minder/cli")?.version,runtimeVersion,"CLI version mismatch");
 await mkdir(join(consumer,"tarballs"));
 for (const pkg of runtime) {
-  assert.equal(pkg.version,runtimeVersion,pkg.name);
   assert.match(pkg.file,/^tarballs\/[a-z0-9-]+\.tgz$/);
   const installed = lock.packages["node_modules/"+pkg.name];
+  assert.equal(installed.version,pkg.version,pkg.name);
   assert.equal(installed.integrity,pkg.integrity,pkg.name);
   assert.equal(installed.resolved,"file:"+pkg.file,pkg.name);
   assert.equal("sha512-"+await digest(join(kit,pkg.file),"sha512"),pkg.integrity,pkg.name);

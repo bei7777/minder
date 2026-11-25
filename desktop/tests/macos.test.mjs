@@ -42,8 +42,13 @@ test("校验本地发行归档、应用签名、磁盘映像和内置 SQLite", a
       await readFile(join(repo, "desktop", "node_modules", name, "LICENSE")));
   }
   assert.deepEqual((await readdir(resources)).sort(),["LICENSE","lib","node_modules","package.json","third-party","ui"]);
+  const archive=join(repo,"releases",`minder-${receipt.runtimeVersion}.tar.gz`);
+  const release=JSON.parse(execFileSync("/usr/bin/tar",["-xOzf",archive,"delivery/release.json"],{encoding:"utf8"}));
+  const expected=release.packages.filter(pkg=>pkg.repo!=="dsh-plugin-minder")
+    .map(({name,version,integrity})=>({name,version,integrity}));
+  assert.deepEqual(receipt.packages,expected);
+  assert.equal(expected.find(pkg=>pkg.name==="@minder/cli").version,receipt.runtimeVersion);
   for (const pkg of receipt.packages) {
-    assert.equal(pkg.version,receipt.runtimeVersion);
     const manifest = JSON.parse(await readFile(join(resources,"node_modules",pkg.name,"package.json"),"utf8"));
     assert.equal(manifest.version,pkg.version);
     assert.equal(manifest.name,pkg.name);
@@ -95,6 +100,9 @@ test("通过 macOS 启动服务打开应用并从设置界面读取隔离状态"
   }
   assert.ok(ready,"macOS did not start the packaged application.");
   const browser = await chromium.connectOverCDP(origin);
+  const debuggerSession=await browser.newBrowserCDPSession();
+  const {processInfo}=await debuggerSession.send("SystemInfo.getProcessInfo");
+  const processId=processInfo.find(process=>process.type==="browser").id;
   try {
     const context = browser.contexts()[0];
     const page = context.pages()[0] ?? await context.waitForEvent("page");
@@ -109,7 +117,12 @@ test("通过 macOS 启动服务打开应用并从设置界面读取隔离状态"
     await page.getByRole("button",{name:"打开设置"}).click();
     await page.getByRole("button",{name:"选择目录…"}).waitFor();
   } finally {
-    for (const page of browser.contexts().flatMap(context=>context.pages())) await page.close();
     await browser.close();
+    const script=fileURLToPath(new URL("./lifecycle.applescript",import.meta.url));
+    execFileSync("/usr/bin/osascript",[script,String(processId),"quit"]);
+    for(let count=0;count<100;count++) {
+      try {process.kill(processId,0);} catch(error) {if(error.code==="ESRCH") break;throw error;}
+      await delay(100);
+    }
   }
 });
